@@ -1,0 +1,38 @@
+name: Auto-merge claude branches
+
+# claude/ で始まるブランチから main へのPRが作成・更新されたら自動でマージする。
+# GITHUB_TOKEN の標準権限のみで動作（外部サービス・有料機能なし）。
+# 前提: Settings → Actions → General → Workflow permissions を
+#       「Read and write permissions」にしておくこと。
+
+on:
+  pull_request:
+    types: [opened, reopened, synchronize, ready_for_review]
+    branches: [main]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  auto-merge:
+    if: startsWith(github.head_ref, 'claude/') && github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    steps:
+      - name: Merge pull request
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
+        # PR作成直後はマージ可否の計算が終わっていないことがあるためリトライする
+        run: |
+          for i in 1 2 3 4 5; do
+            if gh pr merge "$PR" --repo "$REPO" --merge; then
+              echo "Merged PR #$PR"
+              exit 0
+            fi
+            echo "Merge attempt $i failed; retrying in 10s..."
+            sleep 10
+          done
+          echo "::error::Failed to auto-merge PR #$PR after 5 attempts"
+          exit 1
