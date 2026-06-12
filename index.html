@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no">
+<meta name="theme-color" content="#0b1026">
+<title>灯火の街リーザ</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div id="app">
+
+  <!-- 街ビュー -->
+  <header id="city-view" class="stage-1" aria-label="街ビュー（タップで魔素を獲得）">
+    <div id="stars"></div>
+    <div id="moon"></div>
+    <div class="layer" id="layer-far"></div>
+    <div class="layer" id="layer-mid"></div>
+    <div class="layer" id="layer-near"></div>
+    <div id="ground"></div>
+    <div id="ambient-lights"></div>
+    <div id="market-glow"></div>
+    <div id="wave"></div>
+    <div id="tap-layer"></div>
+    <div id="stage-banner">
+      <span id="stage-no">段階 1</span>
+      <span id="stage-name">泥のアジト</span>
+    </div>
+    <div id="tap-hint">街をタップして魔素を集めよう</div>
+  </header>
+
+  <!-- 資源表示バー -->
+  <section id="resource-bar" aria-label="資源表示">
+    <div class="res">
+      <span class="res-label">魔素</span>
+      <span class="res-value" id="res-maso">0</span>
+      <span class="res-rate" id="rate-maso">+0/秒</span>
+    </div>
+    <div class="res">
+      <span class="res-label">資材</span>
+      <span class="res-value" id="res-shizai">0</span>
+      <span class="res-rate" id="rate-shizai">+0/秒</span>
+    </div>
+    <div class="res">
+      <span class="res-label">発展度</span>
+      <span class="res-value" id="res-dev">0</span>
+      <span class="res-rate" id="res-stage">泥のアジト</span>
+    </div>
+  </section>
+
+  <!-- 施設リスト -->
+  <main id="facility-area">
+    <h2 id="facility-heading">施設</h2>
+    <ul id="facility-list"></ul>
+  </main>
+
+  <!-- フッターメニュー -->
+  <nav id="footer-menu" aria-label="メニュー">
+    <button type="button" class="tab active" data-tab="city">街</button>
+    <button type="button" class="tab" data-tab="facility">施設</button>
+    <button type="button" class="tab" data-tab="records">記録</button>
+    <button type="button" class="tab" data-tab="settings">設定</button>
+  </nav>
+
+</div>
+
+<!-- モーダル -->
+<div id="modal-overlay" hidden>
+  <div id="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+    <div id="modal-lamp"></div>
+    <h3 id="modal-title"></h3>
+    <div id="modal-body"></div>
+    <button type="button" id="modal-close">閉じる</button>
+  </div>
+</div>
+
+<script src="js/main.js"></script>
+</body>
+</html>

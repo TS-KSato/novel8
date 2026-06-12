@@ -1,0 +1,552 @@
+/* ============================================================
+   灯火の街リーザ — スタイルシート
+   ダーク基調（夜空の紺〜深い青紫）＋ランタンの暖色（琥珀・橙）
+   外部素材・Webフォント不使用。システムフォントのみ。
+   ============================================================ */
+
+:root {
+  --bg-deep: #0a0e22;
+  --bg-panel: #121833;
+  --bg-card: #161d3b;
+  --line: rgba(255, 178, 90, 0.16);
+  --amber: #ffb24d;
+  --amber-bright: #ffd58a;
+  --orange: #ff8c3a;
+  --text: #e8e6f0;
+  --text-dim: #9a96b8;
+  --danger: #e05555;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+html, body {
+  height: 100%;
+  overflow: hidden;
+  overscroll-behavior: none;
+}
+
+body {
+  background: var(--bg-deep);
+  color: var(--text);
+  font-family: "Hiragino Kaku Gothic ProN", "Hiragino Sans", "Yu Gothic",
+    "Meiryo", system-ui, sans-serif;
+  -webkit-text-size-adjust: 100%;
+  -webkit-tap-highlight-color: transparent;
+  user-select: none;
+  -webkit-user-select: none;
+  touch-action: manipulation;
+}
+
+#app {
+  display: flex;
+  flex-direction: column;
+  height: 100dvh;
+  max-width: 560px;
+  margin: 0 auto;
+}
+
+button {
+  font-family: inherit;
+  cursor: pointer;
+  border: none;
+}
+
+/* ============================================================
+   街ビュー
+   ============================================================ */
+
+#city-view {
+  position: relative;
+  height: 42dvh;
+  min-height: 230px;
+  overflow: hidden;
+  cursor: pointer;
+  transition: background 1.8s ease;
+  flex-shrink: 0;
+}
+
+/* 発展段階ごとの空 */
+#city-view.stage-1 {
+  background: linear-gradient(to bottom,
+    #181228 0%, #251a36 45%, #3a2433 75%, #2a1c1a 100%);
+}
+#city-view.stage-2 {
+  background: linear-gradient(to bottom,
+    #131634 0%, #221d44 50%, #45283c 82%, #2c1e20 100%);
+}
+#city-view.stage-3 {
+  background: linear-gradient(to bottom,
+    #0b1230 0%, #161e48 55%, #2c2a5c 85%, #342a4a 100%);
+}
+#city-view.stage-4 {
+  background: linear-gradient(to bottom,
+    #091028 0%, #121d4a 50%, #322c64 80%, #4a3450 100%);
+}
+#city-view.stage-5 {
+  background: linear-gradient(to bottom,
+    #060a20 0%, #0d1742 45%, #233070 80%, #3d3a80 100%);
+}
+
+/* 星空 */
+#stars { position: absolute; inset: 0; pointer-events: none; }
+.star {
+  position: absolute;
+  width: 2px; height: 2px;
+  border-radius: 50%;
+  background: #fff;
+  opacity: 0.8;
+  animation: twinkle 3s ease-in-out infinite;
+}
+
+/* 月 */
+#moon {
+  position: absolute;
+  top: 12%; right: 12%;
+  width: 34px; height: 34px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 38% 38%, #f4eeda, #cfc8b8 65%, #aaa494);
+  box-shadow: 0 0 24px 6px rgba(244, 238, 218, 0.25);
+  opacity: 0;
+  transition: opacity 2s ease;
+  pointer-events: none;
+}
+#city-view.stage-2 #moon,
+#city-view.stage-3 #moon,
+#city-view.stage-4 #moon,
+#city-view.stage-5 #moon { opacity: 0.9; }
+
+/* 建物レイヤー */
+.layer { position: absolute; inset: 0; pointer-events: none; }
+
+.bld { position: absolute; bottom: 0; }
+#layer-far  .bld { background: #232a52; }
+#layer-mid  .bld { background: #171d3e; }
+#layer-near .bld { background: #0b0f24; }
+#city-view.stage-1 #layer-near .bld,
+#city-view.stage-1 #layer-mid .bld { background: #14101e; }
+#city-view.stage-2 #layer-near .bld { background: #100e22; }
+#city-view.stage-2 #layer-mid  .bld { background: #1c1838; }
+
+/* 屋根の形（clip-path） */
+.bld.shape-hut {
+  clip-path: polygon(0 100%, 0 38%, 12% 38%, 50% 0, 88% 38%, 100% 38%, 100% 100%);
+}
+.bld.shape-tower {
+  clip-path: polygon(0 100%, 0 26%, 34% 26%, 50% 0, 66% 26%, 100% 26%, 100% 100%);
+}
+.bld.shape-step {
+  clip-path: polygon(0 100%, 0 18%, 28% 18%, 28% 0, 72% 0, 72% 18%, 100% 18%, 100% 100%);
+}
+.bld.shape-flat {
+  clip-path: polygon(0 100%, 0 6%, 8% 0, 92% 0, 100% 6%, 100% 100%);
+}
+.bld.shape-dome {
+  clip-path: polygon(0 100%, 0 30%, 10% 16%, 30% 4%, 50% 0, 70% 4%, 90% 16%, 100% 30%, 100% 100%);
+}
+
+/* 窓明かり */
+.win {
+  position: absolute;
+  width: 3px; height: 5px;
+  border-radius: 1px;
+  background: var(--amber-bright);
+  box-shadow: 0 0 6px 1.5px rgba(255, 180, 80, 0.85);
+  animation: flicker 2.6s ease-in-out infinite;
+}
+
+/* ランタン・街灯の光点 */
+.lantern {
+  position: absolute;
+  width: 5px; height: 5px;
+  border-radius: 50%;
+  background: var(--amber-bright);
+  box-shadow:
+    0 0 8px 3px rgba(255, 190, 100, 0.9),
+    0 0 22px 9px rgba(255, 150, 60, 0.35);
+  animation: lanternSway 2.4s ease-in-out infinite;
+}
+
+/* 光の海（高段階の遠景の小さな灯） */
+.sea-light {
+  position: absolute;
+  width: 2px; height: 2px;
+  border-radius: 50%;
+  background: #ffd9a0;
+  box-shadow: 0 0 5px 2px rgba(255, 190, 110, 0.6);
+  animation: twinkle 4s ease-in-out infinite;
+}
+
+/* 地面 */
+#ground {
+  position: absolute;
+  left: 0; right: 0; bottom: 0;
+  height: 7%;
+  background: linear-gradient(to bottom, rgba(8, 8, 18, 0.0), #07060f 70%);
+  pointer-events: none;
+}
+
+/* 市場の賑わい（暖色グロー・段階4以上） */
+#market-glow {
+  position: absolute;
+  bottom: -6%;
+  left: 18%;
+  width: 64%;
+  height: 38%;
+  background: radial-gradient(ellipse at 50% 100%,
+    rgba(255, 140, 58, 0.30), rgba(255, 120, 50, 0.12) 50%, transparent 75%);
+  opacity: 0;
+  transition: opacity 2s ease;
+  animation: glowPulse 5s ease-in-out infinite;
+  pointer-events: none;
+}
+#city-view.stage-4 #market-glow { opacity: 1; }
+#city-view.stage-5 #market-glow { opacity: 1; left: 8%; width: 84%; }
+
+/* 段階アップ：光の波 */
+#wave {
+  position: absolute;
+  left: 50%; top: 62%;
+  width: 24px; height: 24px;
+  border-radius: 50%;
+  background: radial-gradient(circle,
+    rgba(255, 220, 150, 0.95) 0%,
+    rgba(255, 180, 90, 0.5) 38%,
+    rgba(255, 160, 70, 0.18) 60%,
+    transparent 72%);
+  transform: translate(-50%, -50%) scale(0);
+  opacity: 0;
+  pointer-events: none;
+}
+#wave.play { animation: lightWave 1.7s ease-out forwards; }
+@keyframes lightWave {
+  0%   { transform: translate(-50%, -50%) scale(0);  opacity: 1; }
+  70%  { opacity: 0.75; }
+  100% { transform: translate(-50%, -50%) scale(70); opacity: 0; }
+}
+#city-view.flash { animation: cityFlash 1.7s ease-out; }
+@keyframes cityFlash {
+  0% { filter: brightness(1); }
+  30% { filter: brightness(1.55) saturate(1.2); }
+  100% { filter: brightness(1); }
+}
+
+/* タップ演出 */
+#tap-layer { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
+.tap-glow {
+  position: absolute;
+  width: 40px; height: 40px;
+  border-radius: 50%;
+  background: radial-gradient(circle,
+    rgba(255, 220, 150, 0.85), rgba(255, 170, 80, 0.3) 55%, transparent 72%);
+  transform: translate(-50%, -50%) scale(0.4);
+  animation: tapGlow 0.55s ease-out forwards;
+}
+@keyframes tapGlow {
+  to { transform: translate(-50%, -50%) scale(2.1); opacity: 0; }
+}
+.tap-num {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  color: var(--amber-bright);
+  font-size: 15px;
+  font-weight: bold;
+  text-shadow: 0 0 8px rgba(255, 170, 80, 0.9);
+  animation: tapNum 0.8s ease-out forwards;
+}
+@keyframes tapNum {
+  to { transform: translate(-50%, -190%); opacity: 0; }
+}
+
+/* 段階表示バナー */
+#stage-banner {
+  position: absolute;
+  top: 10px; left: 10px;
+  display: flex;
+  flex-direction: column;
+  padding: 6px 12px;
+  border-radius: 10px;
+  background: rgba(8, 10, 26, 0.55);
+  border: 1px solid var(--line);
+  pointer-events: none;
+  backdrop-filter: blur(2px);
+}
+#stage-no { font-size: 10px; color: var(--text-dim); letter-spacing: 1px; }
+#stage-name { font-size: 14px; font-weight: bold; color: var(--amber-bright); }
+
+#tap-hint {
+  position: absolute;
+  bottom: 12px; left: 50%;
+  transform: translateX(-50%);
+  font-size: 11px;
+  color: rgba(255, 213, 138, 0.75);
+  background: rgba(8, 10, 26, 0.45);
+  padding: 4px 12px;
+  border-radius: 999px;
+  pointer-events: none;
+  animation: hintPulse 2.4s ease-in-out infinite;
+  white-space: nowrap;
+}
+@keyframes hintPulse { 0%, 100% { opacity: 0.85; } 50% { opacity: 0.35; } }
+#tap-hint.hidden { display: none; }
+
+/* 共通アニメーション */
+@keyframes flicker {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+@keyframes twinkle {
+  0%, 100% { opacity: 0.85; }
+  50% { opacity: 0.2; }
+}
+@keyframes lanternSway {
+  0%, 100% { opacity: 1; transform: translateY(0); }
+  35% { opacity: 0.65; }
+  50% { opacity: 0.9; transform: translateY(-1px); }
+  70% { opacity: 0.55; }
+}
+@keyframes glowPulse {
+  0%, 100% { transform: scaleX(1); }
+  50% { transform: scaleX(1.08); }
+}
+
+/* ============================================================
+   資源バー
+   ============================================================ */
+
+#resource-bar {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1.2fr;
+  gap: 6px;
+  padding: 8px 10px;
+  background: var(--bg-panel);
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+  flex-shrink: 0;
+}
+.res {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+  min-width: 0;
+}
+.res-label { font-size: 10px; color: var(--text-dim); letter-spacing: 1px; }
+.res-value {
+  font-size: 17px;
+  font-weight: bold;
+  color: var(--amber-bright);
+  text-shadow: 0 0 10px rgba(255, 178, 90, 0.25);
+  white-space: nowrap;
+}
+.res-rate { font-size: 10px; color: var(--text-dim); white-space: nowrap; }
+#res-stage { color: var(--amber); }
+
+/* ============================================================
+   施設リスト
+   ============================================================ */
+
+#facility-area {
+  flex: 1;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  padding: 10px 12px calc(76px + env(safe-area-inset-bottom));
+  background:
+    radial-gradient(ellipse at 50% -20%, rgba(40, 48, 96, 0.5), transparent 60%),
+    var(--bg-deep);
+}
+#facility-heading {
+  font-size: 12px;
+  color: var(--text-dim);
+  letter-spacing: 3px;
+  margin: 2px 2px 8px;
+}
+#facility-list { list-style: none; display: flex; flex-direction: column; gap: 10px; }
+
+.card {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: linear-gradient(135deg, var(--bg-card), #121736);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 12px;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.35);
+}
+.card-info { flex: 1; min-width: 0; }
+.card-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.card-name { font-size: 15px; font-weight: bold; color: var(--text); }
+.card-char { font-size: 10px; color: var(--amber); }
+.card-lv {
+  font-size: 11px;
+  color: var(--amber-bright);
+  background: rgba(255, 178, 90, 0.12);
+  border-radius: 6px;
+  padding: 1px 6px;
+}
+.card-effect { font-size: 11px; color: var(--text-dim); margin-top: 4px; line-height: 1.5; }
+.card-cost { font-size: 11px; margin-top: 3px; color: var(--text-dim); }
+.card-cost .ok { color: #8fd48f; }
+.card-cost .ng { color: var(--danger); }
+
+.buy-btn {
+  min-width: 64px;
+  min-height: 48px;
+  padding: 6px 10px;
+  border-radius: 12px;
+  font-size: 13px;
+  font-weight: bold;
+  color: #2a1804;
+  background: linear-gradient(to bottom, var(--amber-bright), var(--orange));
+  box-shadow: 0 2px 8px rgba(255, 150, 60, 0.35);
+  transition: transform 0.08s ease, opacity 0.2s ease;
+  flex-shrink: 0;
+}
+.buy-btn:active { transform: scale(0.94); }
+.buy-btn:disabled {
+  background: #2a3052;
+  color: #6a6f90;
+  box-shadow: none;
+  cursor: default;
+}
+
+/* ============================================================
+   フッターメニュー
+   ============================================================ */
+
+#footer-menu {
+  position: fixed;
+  left: 0; right: 0; bottom: 0;
+  margin: 0 auto;
+  max-width: 560px;
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  background: rgba(12, 15, 36, 0.96);
+  border-top: 1px solid var(--line);
+  padding-bottom: env(safe-area-inset-bottom);
+  backdrop-filter: blur(6px);
+}
+#footer-menu .tab {
+  min-height: 56px;
+  background: transparent;
+  color: var(--text-dim);
+  font-size: 13px;
+  font-weight: bold;
+  letter-spacing: 2px;
+  transition: color 0.2s ease;
+}
+#footer-menu .tab.active {
+  color: var(--amber-bright);
+  text-shadow: 0 0 10px rgba(255, 178, 90, 0.5);
+}
+
+/* ============================================================
+   モーダル
+   ============================================================ */
+
+#modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  background: rgba(4, 6, 18, 0.78);
+  animation: fadeIn 0.25s ease;
+}
+@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+
+#modal {
+  width: 100%;
+  max-width: 340px;
+  max-height: 76dvh;
+  display: flex;
+  flex-direction: column;
+  background: linear-gradient(160deg, #1a2145, #10142e);
+  border: 1px solid rgba(255, 178, 90, 0.35);
+  border-radius: 18px;
+  padding: 22px 18px 18px;
+  box-shadow: 0 0 40px rgba(255, 160, 70, 0.12), 0 10px 30px rgba(0, 0, 0, 0.5);
+  animation: modalUp 0.3s ease;
+}
+@keyframes modalUp {
+  from { transform: translateY(16px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+
+#modal-lamp {
+  width: 10px; height: 10px;
+  margin: 0 auto 12px;
+  border-radius: 50%;
+  background: var(--amber-bright);
+  box-shadow:
+    0 0 10px 4px rgba(255, 190, 100, 0.9),
+    0 0 30px 14px rgba(255, 150, 60, 0.3);
+  animation: lanternSway 2.4s ease-in-out infinite;
+}
+
+#modal-title {
+  font-size: 15px;
+  text-align: center;
+  color: var(--amber-bright);
+  margin-bottom: 12px;
+  letter-spacing: 1px;
+}
+
+#modal-body {
+  overflow-y: auto;
+  font-size: 13px;
+  line-height: 1.9;
+  color: var(--text);
+}
+
+.story-text {
+  background: rgba(255, 178, 90, 0.07);
+  border-left: 3px solid var(--amber);
+  border-radius: 0 10px 10px 0;
+  padding: 10px 12px;
+  margin-bottom: 10px;
+}
+.story-stage {
+  font-size: 10px;
+  color: var(--amber);
+  letter-spacing: 1px;
+  margin-bottom: 2px;
+}
+.story-locked { color: var(--text-dim); border-left-color: #3a3f60; }
+
+.settings-row { margin-bottom: 14px; font-size: 12px; color: var(--text-dim); line-height: 1.8; }
+
+.danger-btn {
+  width: 100%;
+  min-height: 48px;
+  border-radius: 12px;
+  background: transparent;
+  border: 1px solid var(--danger);
+  color: var(--danger);
+  font-size: 13px;
+  font-weight: bold;
+}
+.danger-btn:active { background: rgba(224, 85, 85, 0.15); }
+
+#modal-close {
+  margin-top: 16px;
+  min-height: 48px;
+  border-radius: 12px;
+  font-size: 14px;
+  font-weight: bold;
+  color: #2a1804;
+  background: linear-gradient(to bottom, var(--amber-bright), var(--orange));
+  box-shadow: 0 2px 8px rgba(255, 150, 60, 0.35);
+}
+#modal-close:active { transform: scale(0.97); }
+
+/* 小さい画面への配慮 */
+@media (max-height: 640px) {
+  #city-view { height: 38dvh; min-height: 200px; }
+}
