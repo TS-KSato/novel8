@@ -132,7 +132,7 @@
   }
 
   const CITY_CFG = {
-    1: { far: 0,  mid: 0, near: 1,  hMax: 16, winRatio: 0,    lanterns: 1,  stars: 7,  sea: 0 },
+    1: { far: 0,  mid: 0, near: 1,  hMax: 16, winRatio: 0,    lanterns: 1,  stars: 10, sea: 0 },
     2: { far: 0,  mid: 2, near: 3,  hMax: 20, winRatio: 0.25, lanterns: 4,  stars: 16, sea: 0 },
     3: { far: 7,  mid: 5, near: 4,  hMax: 34, winRatio: 0.45, lanterns: 5,  stars: 26, sea: 0 },
     4: { far: 10, mid: 7, near: 6,  hMax: 48, winRatio: 0.65, lanterns: 8,  stars: 38, sea: 10 },
@@ -169,6 +169,11 @@
   function fillLayer(layerEl, count, rng, stage, layerKind) {
     layerEl.textContent = '';
     if (count <= 0) return;
+    if (stage === 1 && layerKind === 'near') {
+      // 段階1は固定配置の小屋一つ。背景から識別できる大きさで描く
+      makeBuilding(layerEl, 38, 24, 21, 'shape-hut', 0, rng);
+      return;
+    }
     const cfg = CITY_CFG[stage];
     const scale = layerKind === 'far' ? 0.75 : layerKind === 'mid' ? 0.9 : 1;
     for (let i = 0; i < count; i++) {
@@ -226,8 +231,15 @@
     for (let i = 0; i < lanternCount; i++) {
       const l = document.createElement('span');
       l.className = 'lantern';
-      l.style.left = (4 + rng() * 92) + '%';
-      l.style.bottom = (4 + rng() * 9) + '%';
+      if (stage === 1 && i === 0) {
+        // たった一つの灯は小屋の戸口に寄り添わせ、画面の主役にする
+        l.classList.add('hero');
+        l.style.left = '63%';
+        l.style.bottom = '9%';
+      } else {
+        l.style.left = (4 + rng() * 92) + '%';
+        l.style.bottom = (4 + rng() * 9) + '%';
+      }
       l.style.animationDuration = (1.8 + rng() * 1.6) + 's';
       l.style.animationDelay = (-rng() * 2.5) + 's';
       amb.appendChild(l);
@@ -266,6 +278,7 @@
   let onModalClose = null;
 
   function openModal(title, bodyNode, closeLabel) {
+    if (!bodyNode) return; // 中身のない（空の）モーダルは絶対に出さない
     modalTitle.textContent = title;
     modalBody.textContent = '';
     modalBody.appendChild(bodyNode);
@@ -296,6 +309,7 @@
   }
 
   function showStoryModal(stageNum) {
+    if (!STORY[stageNum]) return; // ストーリーが無い段階ではモーダルを出さない
     openModal('街の記録', storyNode(stageNum, true), '物語を続ける');
   }
 
@@ -453,6 +467,7 @@
   cityEl.addEventListener('pointerdown', e => {
     const g = tapGain();
     state.maso += g;
+    tapHint.classList.add('hidden'); // 一度でも獲得したら誘導をフェードアウト
 
     const rect = cityEl.getBoundingClientRect();
     const x = e.clientX - rect.left;
@@ -596,7 +611,9 @@
   buildFacilityList();
   renderCity();
   updateAll();
-  if (Object.values(state.lv).some(v => v > 0)) tapHint.classList.add('hidden');
+  if (state.maso > 0 || Object.values(state.lv).some(v => v > 0)) {
+    tapHint.classList.add('hidden');
+  }
 
   setInterval(tick, 100);
   setInterval(save, 5000);
