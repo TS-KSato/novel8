@@ -11,7 +11,7 @@
 <div id="app">
 
   <!-- 街ビュー -->
-  <header id="city-view" class="stage-1" aria-label="街ビュー（タップで魔素を獲得）">
+  <header id="city-view" class="stage-1" aria-label="街ビュー（タップでひかりを獲得）">
     <div id="stars"></div>
     <div id="moon"></div>
     <div class="layer" id="layer-far"></div>
@@ -19,6 +19,7 @@
     <div class="layer" id="layer-near"></div>
     <div class="layer" id="layer-fac"></div>
     <div id="ground"></div>
+    <div id="resident-lights"></div>
     <div id="ambient-lights"></div>
     <div id="market-glow"></div>
     <div id="wave"></div>
@@ -26,27 +27,28 @@
     <div id="stage-banner">
       <span id="stage-no">段階 1</span>
       <span id="stage-name">泥のアジト</span>
+      <span id="stage-glow">かがやき 0／5</span>
     </div>
-    <div id="tap-hint">街をタップして魔素を集めよう</div>
+    <div id="tap-hint">街をタップして ひかりを集めよう</div>
   </header>
 
   <!-- 資源表示バー -->
   <section id="resource-bar" aria-label="資源表示">
     <div id="res-grid">
       <div class="res">
-        <span class="res-label">魔素</span>
+        <span class="res-label">✦ ひかり</span>
         <span class="res-value" id="res-maso">0</span>
         <span class="res-rate" id="rate-maso">+0/秒</span>
       </div>
       <div class="res">
-        <span class="res-label">資材</span>
+        <span class="res-label">▤ もくざい</span>
         <span class="res-value" id="res-shizai">0</span>
         <span class="res-rate" id="rate-shizai">+0/秒</span>
       </div>
       <div class="res">
-        <span class="res-label">発展度</span>
-        <span class="res-value" id="res-dev">0</span>
-        <span class="res-rate" id="res-stage">泥のアジト</span>
+        <span class="res-label">🏠 住人</span>
+        <span class="res-value" id="res-people">0</span>
+        <span class="res-rate">この街の なかま</span>
       </div>
     </div>
     <div id="goal-chip" aria-label="次の目標">
@@ -57,18 +59,42 @@
 
   <!-- 施設リスト -->
   <main id="facility-area">
-    <h2 id="facility-heading">施設</h2>
+    <h2 id="facility-heading">しせつ</h2>
     <ul id="facility-list"></ul>
   </main>
 
   <!-- フッターメニュー -->
   <nav id="footer-menu" aria-label="メニュー">
     <button type="button" class="tab active" data-tab="city">街</button>
-    <button type="button" class="tab" data-tab="facility">施設</button>
-    <button type="button" class="tab" data-tab="records">記録</button>
-    <button type="button" class="tab" data-tab="settings">設定</button>
+    <button type="button" class="tab" data-tab="facility">しせつ</button>
+    <button type="button" class="tab" data-tab="records">きろく</button>
+    <button type="button" class="tab" data-tab="settings">せってい</button>
   </nav>
 
+</div>
+
+<!-- 仲間の声・お知らせトースト -->
+<div id="toast-area" aria-live="polite"></div>
+
+<!-- 段階アップの祝祭演出 -->
+<div id="celebration" hidden></div>
+
+<!-- オープニング「約束」 -->
+<div id="opening" class="scene-1" hidden>
+  <button type="button" id="op-skip">とばす</button>
+  <div id="op-stage">
+    <div id="op-friends">
+      <span class="op-friend f1"></span>
+      <span class="op-friend f2"></span>
+      <span class="op-friend f3"></span>
+      <span class="op-friend f4"></span>
+    </div>
+    <div id="op-lantern"></div>
+  </div>
+  <p id="op-text"></p>
+  <p id="op-next-hint">タップで すすむ</p>
+  <button type="button" id="op-start" hidden>はじめる</button>
+  <div id="op-flash"></div>
 </div>
 
 <!-- モーダル -->
@@ -77,7 +103,7 @@
     <div id="modal-lamp"></div>
     <h3 id="modal-title"></h3>
     <div id="modal-body"></div>
-    <button type="button" id="modal-close">閉じる</button>
+    <button type="button" id="modal-close">とじる</button>
   </div>
 </div>
 
