@@ -12,14 +12,23 @@
   const SAVE_KEY = 'toukaLizaSave_v1';
   const COST_RATE = 1.6;
 
-  /* 街ビューの描画方式。window.LIZA_USE_DIORAMA = false を
-     main.js より前に設定すると旧・横から見た夜景描画に戻る。 */
-  const dioramaOn = () =>
-    window.LIZA_USE_DIORAMA !== false && !!window.LizaTown;
+  /* 街ビューの描画方式の解決:
+     ① Three.js 3D（既定。WebGL初期化に成功した場合）
+     ② CSSジオラマ（3D不可時の自動フォールバック）
+     ③ 旧・横から見た夜景（window.LIZA_USE_DIORAMA = false）
+     window.LIZA_USE_3D = false で3Dを無効化できる。 */
+  const viewMode = () => {
+    if (window.LIZA_USE_3D !== false && window.LizaTown3D && window.LizaTown3D.ready) return '3d';
+    if (window.LIZA_USE_DIORAMA !== false && window.LizaTown) return 'diorama';
+    return 'classic';
+  };
+  const glOn = () => viewMode() === '3d';
+  const dioramaOn = () => viewMode() === 'diorama';
   const townData = () => ({
     stage: state.maxStage,
     lv: state.lv,
     residents: residents(),
+    decor: state.decor,
   });
 
   /* ---------- ふりがな（ルビ）ヘルパー ----------
@@ -81,18 +90,18 @@
 
   /* オープニング「約束」（タップで進む4枚） */
   const OPENING_LINES = [
-    'むかし、ここには なにもなかった。あったのは、ちいさなランタン ひとつだけ。',
-    'これは、たいせつな友だちが のこしてくれた灯。『この灯を、いつか 街いっぱいの光にしてね』',
-    'レインたちは ｛約束|やくそく｝した。きみも、いっしょに 来てくれる?',
+    '昔、ここには何もなかった。あったのは、小さなランタンがひとつだけ。',
+    'これは、大切な友人が｛遺|のこ｝してくれた灯。『この灯を、いつか街いっぱいの光にしてね』',
+    'レインたちは約束した。——君も、一緒に来てくれるか?',
   ];
-  const FIRST_GOAL_TOAST = 'まずは ランタンの灯に ひかりを集めよう（街をタップ!）';
+  const FIRST_GOAL_TOAST = 'まずはランタンの灯に光を集めよう（街をタップ!）';
 
   /* ストーリーメッセージ（段階到達時・原文のまま、ふりがな付き） */
   const STORY = {
-    2: 'レイン『……まずは｛雨風|あめかぜ｝をしのげる｛場所|ばしょ｝からだ。｛少|すこ｝しずつでいい、｛確|たし｝かめながら｛進|すす｝めよう』',
-    3: 'バルト『｛見|み｝ろよ、｛灯|あか｝りが｛増|ふ｝えてきた。｛人|ひと｝が｛集|あつ｝まる｛所|ところ｝には｛商|あきな｝いが｛生|う｝まれる。ここからが｛本番|ほんばん｝だぜ』',
-    4: 'アルノ『｛記録|きろく｝した｛数字|すうじ｝は｛嘘|うそ｝をつきません。この｛街|まち｝は、｛確|たし｝かに｛育|そだ｝っています』',
-    5: '｛夜|よる｝の｛帳|とばり｝が｛下|お｝りる｛瞬間|しゅんかん｝、｛街灯網|がいとうもう｝が｛波打|なみう｝つように｛一斉|いっせい｝に｛灯|とも｝った。かつてたった｛一|ひと｝つのランタンだった｛光|ひかり｝が、いま、｛街全体|まちぜんたい｝を｛照|て｝らしている。｛爽|さわ｝やかな｛風|かぜ｝が、｛街|まち｝を｛吹|ふ｝き｛抜|ぬ｝けていった。',
+    2: 'レイン『……まずは雨風をしのげる場所からだ。少しずつでいい、確かめながら進めよう』',
+    3: 'バルト『見ろよ、灯りが増えてきた。人が集まる所には商いが生まれる。ここからが本番だぜ』',
+    4: 'アルノ『記録した数字は嘘をつきません。この街は、確かに育っています』',
+    5: '夜の｛帳|とばり｝が下りる瞬間、｛街灯網|がいとうもう｝が波打つように一斉に灯った。かつてたった一つのランタンだった光が、いま、街全体を照らしている。爽やかな風が、街を吹き抜けていった。',
   };
 
   /* ---------- ものがたり図鑑 ----------
@@ -101,85 +110,85 @@
   const STORYBOOK = [
     {
       id: 'world', title: 'この世界',
-      hint: 'はじめから よめる',
+      hint: '初めから読める',
       cond: () => true,
-      text: 'この｛世界|せかい｝では、もって生まれた｛魔力|まりょく｝の強さで、人のえらさが決まるという。つよい光の家に生まれた子は えらく、よわい光の子は 下を向いて歩く。……でも、ほんとうに そうなのかな?',
+      text: 'この世界では、生まれ持った魔力の強さで人の偉さが決まるという。強い光の家に生まれた子は偉く、弱い光の子は下を向いて歩く。——でも、本当にそうだろうか?',
     },
     {
       id: 'rein', title: 'レイン',
-      hint: 'ランタン工房が Lv3に なると…',
+      hint: 'ランタン工房がLv3になると…',
       cond: s => s.lv.lantern >= 3,
-      text: '｛魔力|まりょく｝が よわいと わらわれた｛少年|しょうねん｝。けれど「よく見て、ためして、｛記録|きろく｝する」ことだけは、だれにも まけなかった。みんなが むりだと いうことを、レインは ｛何度|なんど｝でも たしかめた。',
+      text: '魔力が弱いと笑われた少年。けれど「よく見て、試して、記録する」ことだけは、誰にも負けなかった。みんなが無理だと言うことを、レインは何度でも確かめた。',
     },
     {
       id: 'baruto', title: 'バルト',
-      hint: '市場が Lv3に なると…',
+      hint: '市場がLv3になると…',
       cond: s => s.lv.market >= 3,
-      text: 'だれとでも すぐ友だちになれる｛少年|しょうねん｝。ものの ねだんと、人の気もちの プロ。「いい｛商|あきな｝いはな、みんなが ｛笑顔|えがお｝になるんだぜ」が 口ぐせ。',
+      text: '誰とでもすぐ友達になれる少年。物の値段と、人の気持ちのプロ。「いい商いはな、みんなが笑顔になるんだぜ」が口癖。',
     },
     {
       id: 'aruno', title: 'アルノ',
-      hint: '学問所が Lv3に なると…',
+      hint: '学問所がLv3になると…',
       cond: s => s.lv.school >= 3,
-      text: '｛数字|すうじ｝と 星をよむ、もの｛静|しず｝かな｛少年|しょうねん｝。レインの「こうかもしれない」を、たしかな｛数字|すうじ｝で ほんものの｛魔法|まほう｝に変える、たいせつな｛相棒|あいぼう｝。',
+      text: '数字と星を読む、物静かな少年。レインの「こうかもしれない」を、確かな数字で本物の魔法に変える、大切な相棒。',
     },
     {
       id: 'lanternlight', title: 'ランタンの灯',
-      hint: '街が「開拓の集落」に なると…',
+      hint: '街が「開拓の集落」になると…',
       cond: s => s.maxStage >= 2,
-      text: 'レインたちには、4人目の 友だちがいた。このランタンは、その子が なによりも ｛大切|たいせつ｝にしていたもの。｛灯|あか｝りを見つめると、なぜだか みんな、やさしい気もちに なれた。',
+      text: 'レインたちには、4人目の友達がいた。このランタンは、その子が何よりも大切にしていたもの。灯りを見つめると、なぜだかみんな、優しい気持ちになれた。',
     },
     {
       id: 'lizaname', title: 'リーザという名前',
-      hint: '街が「灯りの街」に なると…',
+      hint: '街が「灯りの街」になると…',
       cond: s => s.maxStage >= 3,
-      text: '街の名前になった｛少女|しょうじょ｝のこと。「どうしてか わからないまま、｛困|こま｝ってしまう人を へらしたい」——それが その子の ゆめだった。街は、その名前と いっしょに ｛育|そだ｝っていく。',
+      text: '街の名前になった少女のこと。「理由も分からないまま困ってしまう人を、減らしたい」——それが彼女の夢だった。街は、その名前とともに育っていく。',
     },
     {
-      id: 'clinicsecret', title: '救護院のひみつ',
-      hint: '救護院が Lv5に なると…',
+      id: 'clinicsecret', title: '救護院の秘密',
+      hint: '救護院がLv5になると…',
       cond: s => s.lv.clinic >= 5,
-      text: '｛救護院|きゅうごいん｝に くる人は、みんな どこか ｛安心|あんしん｝した顔になる。リーザの ゆめは、いまも この｛建物|たてもの｝の中で 生きている。だから ここの灯は、すこし やさしい色をしている。',
+      text: '｛救護院|きゅうごいん｝に来る人は、みんなどこか安心した顔になる。リーザの夢は、今もこの建物の中で生きている。だからここの灯は、少し優しい色をしている。',
     },
     {
       id: 'promise', title: '光の都の約束',
-      hint: '街が「光の都リーザ」に なると…',
+      hint: '街が「光の都リーザ」になると…',
       cond: s => s.maxStage >= 5,
-      text: 'ちいさな灯は、街いっぱいの光になった。｛約束|やくそく｝は、はたされた。……でも、街は これからも ｛育|そだ｝っていく。あたらしい朝も、あたらしい夜も、この街の光は もう｛消|き｝えない。',
+      text: '小さな灯は、街いっぱいの光になった。約束は、果たされた。——それでも、街はこれからも育っていく。新しい朝も、新しい夜も、この街の光はもう消えない。',
     },
   ];
 
   /* ---------- 施設定義 ---------- */
   const FACILITIES = [
     {
-      id: 'lantern', name: 'ランタン｛工房|こうぼう｝', char: 'rein',
+      id: 'lantern', name: 'ランタン工房', char: 'rein',
       base: { maso: 15, shizai: 0 },
-      desc: 'レインが ランタンを ともす場所。ひかりが じどうで集まる',
-      stat: lv => 'いま ✦+' + trim1(lv) + '/秒',
+      desc: 'レインがランタンを灯す場所。光が自動で集まる',
+      stat: lv => '現在 ✦+' + trim1(lv) + '/秒',
     },
     {
-      id: 'market', name: '｛市場|いちば｝', char: 'baruto',
+      id: 'market', name: '市場', char: 'baruto',
       base: { maso: 25, shizai: 0 },
-      desc: 'バルトの 元気な声が ひびく。もくざいが じどうで集まる',
-      stat: lv => 'いま ▤+' + trim1(lv * 0.5) + '/秒',
+      desc: 'バルトの元気な声が響く。木材が自動で集まる',
+      stat: lv => '現在 ▤+' + trim1(lv * 0.5) + '/秒',
     },
     {
-      id: 'school', name: '｛学問所|がくもんじょ｝', char: 'aruno',
+      id: 'school', name: '学問所', char: 'aruno',
       base: { maso: 70, shizai: 6 },
-      desc: 'アルノが 数字と 星をしらべる。タップで集まる ひかりが ふえる',
-      stat: lv => 'いま タップ✦+' + (1 + lv),
+      desc: 'アルノが数字と星を調べる。タップで集まる光が増える',
+      stat: lv => '現在 タップ✦+' + (1 + lv),
     },
     {
       id: 'clinic', name: '｛救護院|きゅうごいん｝', char: 'rein',
       base: { maso: 250, shizai: 30 },
-      desc: 'リーザの ねがいを ついだ場所。みんなの 仕事が はかどる',
-      stat: lv => 'いま じどうで集まる量 +' + lv * 10 + '%',
+      desc: 'リーザの願いを継いだ場所。街のみんなの仕事が捗る',
+      stat: lv => '現在 自動生産 +' + lv * 10 + '%',
     },
     {
       id: 'lights', name: '｛街灯網|がいとうもう｝', char: 'baruto',
       base: { maso: 600, shizai: 80 },
-      desc: '街のすみずみまで あかりを とどける',
-      stat: lv => 'いま かがやき +' + lv * 5,
+      desc: '街の隅々まで灯りを届ける',
+      stat: lv => '現在 輝き +' + lv * 5,
     },
   ];
 
@@ -188,50 +197,50 @@
     rein: {
       name: 'レイン', cls: 'v-rein', emblem: '🕯',
       lines: [
-        '……うん、いい｛感|かん｝じだ',
-        '｛確|たし｝かめながら、｛進|すす｝もう',
-        '｛灯|あか｝りがひとつ、ふえたね',
-        '｛静|しず｝かな｛夜|よる｝ほど、｛光|ひかり｝はよく｛見|み｝える',
-        'この｛調子|ちょうし｝で、いこう',
-        '……あの｛約束|やくそく｝に、｛少|すこ｝し｛近|ちか｝づいた',
+        '……うん、いい感じだ',
+        '確かめながら、進もう',
+        '灯りがひとつ、増えたね',
+        '静かな夜ほど、光はよく見える',
+        'この調子で、いこう',
+        '……あの約束に、少し近づいた',
       ],
     },
     baruto: {
       name: 'バルト', cls: 'v-baruto', emblem: '⚖',
       lines: [
-        'よっしゃ、｛商売|しょうばい｝はんじょう!',
-        '｛人|ひと｝が｛集|あつ｝まりゃ｛街|まち｝は｛育|そだ｝つぜ!',
-        'いいねえ、にぎやかになってきた!',
-        '｛腹|はら｝がへったら｛市場|いちば｝に｛来|き｝な!',
+        'よっしゃ、商売繁盛!',
+        '人が集まりゃ街は育つぜ!',
+        'いいねえ、賑やかになってきた!',
+        '腹が減ったら市場に来な!',
         'でっかくいこうぜ!',
       ],
     },
     aruno: {
       name: 'アルノ', cls: 'v-aruno', emblem: '✒',
       lines: [
-        '｛記録|きろく｝しておきます',
-        '｛数字|すうじ｝は うそをつきません',
-        '｛順調|じゅんちょう｝です。とても',
-        '｛星|ほし｝の｛位置|いち｝も、｛今夜|こんや｝はいいようです',
-        '｛計算|けいさん｝どおり……いえ、それ｛以上|いじょう｝です',
+        '記録しておきます',
+        '数字は嘘をつきません',
+        '順調です。とても',
+        '今夜は星の位置も良いようです',
+        '計算どおり……いえ、それ以上です',
       ],
     },
   };
-  const FIRST_BUILD_LINE = { char: 'rein', text: '……うん、いい｛感|かん｝じだ。はじまりの｛一歩|いっぽ｝だね' };
-  const FIRST_RESIDENT_LINE = { char: 'baruto', text: 'お、はじめての｛住人|じゅうにん｝だ! にぎやかになるぜ!' };
+  const FIRST_BUILD_LINE = { char: 'rein', text: '……うん、いい感じだ。始まりの一歩だね' };
+  const FIRST_RESIDENT_LINE = { char: 'baruto', text: 'お、初めての住人だ! 賑やかになるぜ!' };
 
   /* ---------- 住人の節目（職業＋一言） ---------- */
   const RESIDENT_MILESTONES = [
-    { n: 5,    text: 'パンやの ハンナ『いいにおいで みんなを よびよせるわ』' },
-    { n: 10,   text: 'はなやの ミレイユ『まどべに 花があると 笑顔が ふえるの』' },
-    { n: 20,   text: 'こびとの大工 ドン『いい木だ。おれが 屋根を なおしてやろう』' },
-    { n: 50,   text: 'りょうしの少年 テオ『川で 大きいのが つれたんだ!』' },
-    { n: 100,  text: '糸つむぎの リダばあちゃん『あたたかい 毛糸を あんであげようね』' },
-    { n: 200,  text: 'かじやの ガロ『火花だって 街の灯の なかまさ』' },
-    { n: 350,  text: '旅の楽士 ピポ『この街の歌を つくったよ。ききたい?』' },
-    { n: 500,  text: '星よみの ナジュ『星も この街を 見おろして わらってる』' },
-    { n: 750,  text: 'ぶどう園の フェルマ『みのりの きせつが たのしみだね』' },
-    { n: 1000, text: 'ゆうびんやの クルト『とどけたい 手紙が ふえるのは いい街の しるしさ』' },
+    { n: 5,    text: 'パン屋のハンナ『いい匂いで、みんなを呼び寄せるわ』' },
+    { n: 10,   text: '花屋のミレイユ『窓辺に花があると、笑顔が増えるの』' },
+    { n: 20,   text: '小人の大工 ドン『いい木だ。屋根は俺が直してやろう』' },
+    { n: 50,   text: '漁師の少年テオ『川で大物が釣れたんだ!』' },
+    { n: 100,  text: '糸紡ぎのリダ婆さん『温かい毛糸を編んであげようね』' },
+    { n: 200,  text: '鍛冶屋のガロ『火花だって、街の灯の仲間さ』' },
+    { n: 350,  text: '旅の楽士ピポ『この街の歌を作ったよ。聴きたい?』' },
+    { n: 500,  text: '星読みのナジュ『星もこの街を見下ろして笑っている』' },
+    { n: 750,  text: '葡萄園のフェルマ『実りの季節が楽しみだね』' },
+    { n: 1000, text: '郵便屋のクルト『届けたい手紙が増えるのは、いい街の証だよ』' },
   ];
 
   /* ---------- 状態 ---------- */
@@ -245,6 +254,11 @@
     lastResidents: 0,  // 住人トースト用の前回値
     cyclePos: NIGHT_START, // 昼夜サイクルの位相（秒）
     pages: [],         // 解放済みの図鑑ページid
+    questActive: [],   // 受領中のおねがいid（最大2）
+    questDone: [],     // 達成済みのおねがいid
+    decor: [],         // 報酬で街に置かれた装飾id（永続）
+    boost: null,       // 二択型の一時ブースト {kind, mult, until}
+    questUnread: false,
     lastSaved: Date.now(),
   };
 
@@ -253,8 +267,8 @@
 
   /* ---------- 派生値 ---------- */
   const autoBonus = () => 1 + state.lv.clinic * 0.1;
-  const masoPerSec = () => state.lv.lantern * autoBonus();
-  const shizaiPerSec = () => state.lv.market * 0.5 * autoBonus();
+  const masoPerSec = () => state.lv.lantern * autoBonus() * questBoostMult('maso');
+  const shizaiPerSec = () => state.lv.market * 0.5 * autoBonus() * questBoostMult('shizai');
   const tapGain = () => 1 + state.lv.school;
   const totalLv = () =>
     state.lv.lantern + state.lv.market + state.lv.school + state.lv.clinic + state.lv.lights;
@@ -405,6 +419,10 @@
   }
 
   function renderFacilities() {
+    if (glOn()) {
+      window.LizaTown3D.render(townData());
+      return;
+    }
     if (dioramaOn()) {
       window.LizaTown.render(townData());
       return;
@@ -487,6 +505,10 @@
 
   /* 住人の灯：人が増える＝窓明かりが増える、を絵で一致させる */
   function renderResidentLights() {
+    if (glOn()) {
+      window.LizaTown3D.render(townData()); // 民家として反映される
+      return;
+    }
     if (dioramaOn()) {
       window.LizaTown.render(townData()); // 民家・灯の密度として反映される
       return;
@@ -509,6 +531,10 @@
 
   /* 建設・そだてる時：対象の建物が光と共に出現/成長する */
   function animateFacility(id) {
+    if (glOn()) {
+      window.LizaTown3D.animateFacility(id);
+      return;
+    }
     if (dioramaOn()) {
       window.LizaTown.animateFacility(id);
       return;
@@ -527,7 +553,19 @@
     // 段階アップ演出（flash）の途中で呼ばれてもアニメーションを切らない
     const flashing = cityEl.classList.contains('flash');
     cityEl.className = 'stage-' + stage + ' t-' + phaseAt(state.cyclePos) +
-      (dioramaOn() ? ' diorama' : '') + (flashing ? ' flash' : '');
+      (glOn() ? ' gl' : dioramaOn() ? ' diorama' : '') + (flashing ? ' flash' : '');
+
+    if (glOn()) {
+      // 3D描画：DOM側のレイヤーと空はすべて空にして、シーンに一括で描く
+      for (const id of ['layer-far', 'layer-mid', 'layer-near', 'layer-fac',
+        'resident-lights', 'ambient-lights', 'stars']) {
+        $(id).textContent = '';
+      }
+      window.LizaTown3D.render(townData());
+      $('stage-no').textContent = '段階 ' + stage;
+      $('stage-name').textContent = STAGES[stage - 1].name;
+      return;
+    }
 
     const stars = $('stars');
     stars.textContent = '';
@@ -611,7 +649,7 @@
   }
 
   /* 祝祭演出：おめでとう!＋光の粒＋住人たちの歓声 */
-  const CHEERS = ['わあっ!', 'あかるい!', 'きれい!', 'やったあ!', 'すごい!'];
+  const CHEERS = ['わあっ!', '明るい!', 'きれいだ!', 'やった!', 'すごい!'];
   function playCelebration() {
     const cel = $('celebration');
     cel.textContent = '';
@@ -703,7 +741,7 @@
     if (ms) {
       infoToast('🏠 ' + ms.text);
     } else {
-      infoToast('🏠 あたらしい住人が 越してきた!');
+      infoToast('🏠 新しい住人が越してきた!');
     }
     if (prev === 0) {
       setTimeout(() => speak(FIRST_RESIDENT_LINE.char, FIRST_RESIDENT_LINE.text), 600);
@@ -723,7 +761,7 @@
     modalTitle.textContent = title;
     modalBody.textContent = '';
     modalBody.appendChild(bodyNode);
-    $('modal-close').textContent = closeLabel || 'とじる';
+    $('modal-close').textContent = closeLabel || '閉じる';
     overlay.hidden = false;
   }
 
@@ -744,7 +782,7 @@
     if (unlockedFlag) {
       body.appendChild(rubyText(STORY[stageNum]));
     } else {
-      body.textContent = `？？？（段階${stageNum}に なると よめるよ）`;
+      body.textContent = `？？？（段階${stageNum}に到達すると読める）`;
     }
     div.appendChild(head);
     div.appendChild(body);
@@ -759,7 +797,7 @@
     you.className = 'story-you';
     you.textContent = 'あなたたちの街は『' + STAGES[stageNum - 1].name + '』になった。';
     wrap.appendChild(you);
-    openModal('街のきろく', wrap, '物語をつづける');
+    openModal('街の記録', wrap, '物語を続ける');
   }
 
   function showRecordsModal() {
@@ -767,7 +805,7 @@
     const replay = document.createElement('button');
     replay.type = 'button';
     replay.className = 'replay-btn';
-    replay.textContent = '✦ やくそくを もういちど見る';
+    replay.textContent = '✦ 約束をもう一度見る';
     replay.addEventListener('click', () => {
       closeModal();
       startOpening();
@@ -807,7 +845,7 @@
       wrap.appendChild(card);
     }
 
-    openModal('ずかん', wrap);
+    openModal('図鑑', wrap);
   }
 
   /* 図鑑ページの解放チェック（silent=trueはロード時の整合用） */
@@ -820,7 +858,7 @@
       }
     }
     if (added && !silent) {
-      infoToast('📖 ずかんに あたらしいページ!');
+      infoToast('📖 図鑑に新しいページが増えた!');
     }
     return added;
   }
@@ -831,16 +869,15 @@
     const info = document.createElement('div');
     info.className = 'settings-row';
     info.textContent =
-      'ゲームは この端末（たんまつ）に じどうで ほぞんされます。' +
-      'さいごの ほぞん：' + new Date(state.lastSaved).toLocaleString('ja-JP');
+      'ゲームはこの端末に自動で保存されます。最終保存：' + new Date(state.lastSaved).toLocaleString('ja-JP');
     wrap.appendChild(info);
 
     const btn = document.createElement('button');
     btn.type = 'button';
     btn.className = 'danger-btn';
-    btn.textContent = 'セーブデータを リセット';
+    btn.textContent = 'セーブデータをリセット';
     btn.addEventListener('click', () => {
-      if (confirm('セーブデータを けして、さいしょから やりなおします。\nもとに もどせません。いいですか?')) {
+      if (confirm('セーブデータを削除して、最初からやり直します。\nこの操作は取り消せません。よろしいですか?')) {
         try { localStorage.removeItem(SAVE_KEY); } catch (e) { /* 失敗しても続行 */ }
         resetting = true;
         location.reload();
@@ -848,7 +885,7 @@
     });
     wrap.appendChild(btn);
 
-    openModal('せってい', wrap);
+    openModal('設定', wrap);
   }
 
   /* ============================================================
@@ -973,7 +1010,7 @@
       r.stat.textContent = fac.stat(lv);
 
       r.cost.textContent = '';
-      r.cost.appendChild(document.createTextNode('ひつよう：'));
+      r.cost.appendChild(document.createTextNode('必要：'));
       const m = document.createElement('span');
       m.className = okMaso ? 'ok' : 'ng';
       m.textContent = '✦' + fmt(c.maso);
@@ -986,7 +1023,7 @@
         r.cost.appendChild(z);
       }
 
-      r.btn.textContent = lv === 0 ? 'たてる' : 'そだてる';
+      r.btn.textContent = lv === 0 ? '建てる' : '育てる';
       const afford = okMaso && okShizai;
       // たてられるようになった瞬間、ボタンをわずかに明滅させて気づかせる
       if (afford && r.wasAfford === false) {
@@ -1072,21 +1109,61 @@
     wishTimer = setTimeout(spawnWish, wait);
   }
 
+  /* 願い星キャッチの共通処理（獲得＋輝きの演出） */
+  function grantWishAt(x, y) {
+    const r = wishReward();
+    state.maso += r.maso;
+    state.shizai += r.shizai;
+    const num = document.createElement('span');
+    num.className = 'tap-num wish-num';
+    num.textContent = '+' + fmt(r.maso) + ' ✦' + (r.shizai > 0 ? '  +' + fmt(r.shizai) + ' ▤' : '');
+    num.style.left = x + 'px';
+    num.style.top = y + 'px';
+    tapLayer.appendChild(num);
+    for (let i = 0; i < 5; i++) {
+      const sp = document.createElement('span');
+      sp.className = 'spark bright';
+      sp.style.left = (x + (Math.random() * 36 - 18)) + 'px';
+      sp.style.top = (y + (Math.random() * 16 - 8)) + 'px';
+      sp.style.setProperty('--dx', (Math.random() * 64 - 32).toFixed(0) + 'px');
+      tapLayer.appendChild(sp);
+      setTimeout(() => sp.remove(), 1500);
+    }
+    setTimeout(() => num.remove(), 1100);
+    updateAll();
+    save();
+  }
+
   function spawnWish() {
     // 開いている画面でだけ現れる（オープニング中・非表示タブは見送り）
     if (document.visibilityState === 'hidden' || !openingEl.hidden) {
       scheduleWish();
       return;
     }
-    const layer = $('wish-layer');
-    layer.textContent = '';
     const phase = phaseAt(state.cyclePos);
     const isStar = phase === 'night' || phase === 'dusk';
+
+    // 3Dビューでは星／蝶が3D空間内に現れる
+    if (glOn()) {
+      const ok = window.LizaTown3D.spawnWish(isStar ? 'star' : 'butterfly', () => {
+        const p = window.LizaTown3D.lanternPoint() ||
+          { x: cityEl.clientWidth / 2, y: cityEl.clientHeight / 2 };
+        grantWishAt(p.x, p.y);
+        scheduleWish();
+      });
+      if (ok) {
+        window.LizaTown3D.onWishExpire = () => scheduleWish();
+        return;
+      }
+    }
+
+    const layer = $('wish-layer');
+    layer.textContent = '';
 
     const w = document.createElement('button');
     w.type = 'button';
     w.className = 'wish ' + (isStar ? 'wish-star' : 'wish-butterfly');
-    w.setAttribute('aria-label', 'ねがいぼし');
+    w.setAttribute('aria-label', '願い星');
     w.style.left = (10 + Math.random() * 72) + '%';
     w.style.top = (8 + Math.random() * 30) + '%';
     const core = document.createElement('span');
@@ -1098,33 +1175,9 @@
       e.stopPropagation(); // 街タップと二重取りにしない
       if (caught) return;
       caught = true;
-      const r = wishReward();
-      state.maso += r.maso;
-      state.shizai += r.shizai;
-
-      // 獲得の輝き＋フロート表示
       const rect = cityEl.getBoundingClientRect();
-      const x = e.clientX - rect.left, y = e.clientY - rect.top;
-      const num = document.createElement('span');
-      num.className = 'tap-num wish-num';
-      num.textContent = '+' + fmt(r.maso) + ' ✦' + (r.shizai > 0 ? '  +' + fmt(r.shizai) + ' ▤' : '');
-      num.style.left = x + 'px';
-      num.style.top = y + 'px';
-      tapLayer.appendChild(num);
-      for (let i = 0; i < 5; i++) {
-        const sp = document.createElement('span');
-        sp.className = 'spark bright';
-        sp.style.left = (x + (Math.random() * 36 - 18)) + 'px';
-        sp.style.top = (y + (Math.random() * 16 - 8)) + 'px';
-        sp.style.setProperty('--dx', (Math.random() * 64 - 32).toFixed(0) + 'px');
-        tapLayer.appendChild(sp);
-        setTimeout(() => sp.remove(), 1500);
-      }
-      setTimeout(() => num.remove(), 1100);
-
+      grantWishAt(e.clientX - rect.left, e.clientY - rect.top);
       w.remove();
-      updateAll();
-      save();
       scheduleWish();
     });
 
@@ -1136,6 +1189,249 @@
         scheduleWish();
       }
     }, WISH_LIFE * 1000);
+  }
+
+  /* ============================================================
+     街のおねがい（依頼システム）
+     納品型 / 達成型 / 二択型。報酬の装飾は3Dの街に置かれ永続する。
+     ============================================================ */
+
+  const QUEST_TEMPLATES = [
+    // 納品型（5種）— 報酬に装飾が付き、街が実際に豊かになる
+    { id: 'd_wood80', type: 'delivery', res: 'shizai', amount: 80,
+      title: '木材を80届けてほしい', from: '小人の大工 ドン',
+      note: '広場の花壇を作りたいんだ。',
+      reward: { maso: 250, decor: 'flowerbed' }, minStage: 2 },
+    { id: 'd_light300', type: 'delivery', res: 'maso', amount: 300,
+      title: '光を300届けてほしい', from: 'パン屋のハンナ',
+      note: '夜明け前の仕込みに、灯りが要るのよ。',
+      reward: { shizai: 80, decor: 'bench' }, minStage: 2 },
+    { id: 'd_wood200', type: 'delivery', res: 'shizai', amount: 200,
+      title: '木材を200届けてほしい', from: '花屋のミレイユ',
+      note: '祝祭の旗を立てましょう。',
+      reward: { maso: 700, decor: 'flagpole' }, minStage: 3 },
+    { id: 'd_light1200', type: 'delivery', res: 'maso', amount: 1200,
+      title: '光を1200届けてほしい', from: '星読みのナジュ',
+      note: '広場に小さな噴水を。水面に星が映るわ。',
+      reward: { shizai: 300, decor: 'fountain' }, minStage: 3 },
+    { id: 'd_wood500', type: 'delivery', res: 'shizai', amount: 500,
+      title: '木材を500届けてほしい', from: '鍛冶屋のガロ',
+      note: '「光の像」を鋳よう。この街の証だ。',
+      reward: { maso: 2400, decor: 'statue' }, minStage: 4 },
+    // 達成型（4種）
+    { id: 'a_school5', type: 'achieve', title: '学問所をLv5にしてほしい',
+      from: 'アルノ', speaker: 'aruno', note: '調べたいことが増えました。',
+      cond: () => state.lv.school >= 5, reward: { maso: 600 }, minStage: 2 },
+    { id: 'a_lantern8', type: 'achieve', title: 'ランタン工房をLv8にしてほしい',
+      from: 'レイン', speaker: 'rein', note: '灯りはまだ足りない。',
+      cond: () => state.lv.lantern >= 8, reward: { maso: 1500 }, minStage: 3 },
+    { id: 'a_residents30', type: 'achieve', title: '住人を30人に増やしてほしい',
+      from: 'バルト', speaker: 'baruto', note: '賑わいこそ街の力だぜ。',
+      cond: () => residents() >= 30, reward: { shizai: 180 }, minStage: 2 },
+    { id: 'a_clinic1', type: 'achieve', title: '救護院を建ててほしい',
+      from: '糸紡ぎのリダ婆さん', note: '安心して暮らせる場所が要るんだよ。',
+      cond: () => state.lv.clinic >= 1, reward: { maso: 500 }, minStage: 3 },
+    // 二択型（2種）— どちらを選んでも正解だが、効果が異なる
+    { id: 'c_festival', type: 'choice', title: '祭りの準備、どちらを手伝う?',
+      from: 'バルト', note: '人手が足りないんだ。頼む!',
+      options: [
+        { key: 'market', label: '市場を手伝う', boost: { kind: 'shizai', mult: 1.25, min: 10 },
+          line: 'よっしゃ、市場は任せた! 10分間、木材の集まりが+25%だ!' },
+        { key: 'school', label: '学問所を手伝う', boost: { kind: 'maso', mult: 1.25, min: 10 },
+          line: '助かります。10分間、光の集まりが+25%です。' },
+      ], minStage: 2 },
+    { id: 'c_visit', type: 'choice', title: '隣街の使者が来た。どこを案内する?',
+      from: 'レイン', note: 'この街の良さを、どう伝えよう。',
+      options: [
+        { key: 'lantern', label: 'ランタン工房を案内', boost: { kind: 'maso', mult: 1.2, min: 10 },
+          line: '使者は灯りに見とれていた。10分間、光の集まりが+20%。' },
+        { key: 'clinic', label: '救護院を案内', boost: { kind: 'all', mult: 1.15, min: 10 },
+          line: '使者は深くうなずいた。10分間、すべての生産が+15%。' },
+      ], minStage: 3 },
+  ];
+  const QUEST_MAX_ACTIVE = 2;
+
+  function questEligible() {
+    return QUEST_TEMPLATES.filter(q =>
+      state.maxStage >= q.minStage &&
+      !state.questActive.includes(q.id) &&
+      !state.questDone.includes(q.id));
+  }
+
+  function spawnQuest(forceId) {
+    if (state.questActive.length >= QUEST_MAX_ACTIVE) return null;
+    let tpl = null;
+    if (forceId) {
+      tpl = QUEST_TEMPLATES.find(q => q.id === forceId);
+      if (!tpl || state.questActive.includes(tpl.id) || state.questDone.includes(tpl.id)) return null;
+    } else {
+      const pool = questEligible();
+      if (pool.length === 0) return null;
+      tpl = pool[Math.floor(Math.random() * pool.length)];
+    }
+    state.questActive.push(tpl.id);
+    state.questUnread = true;
+    infoToast('📋 街のおねがいが届いた!');
+    updateQuestBadge();
+    save();
+    return tpl.id;
+  }
+
+  let questTimer = 0;
+  function scheduleQuestCheck() {
+    clearTimeout(questTimer);
+    questTimer = setTimeout(() => {
+      if (document.visibilityState !== 'hidden' && openingEl.hidden) spawnQuest();
+      scheduleQuestCheck();
+    }, 60000 + Math.random() * 40000);
+  }
+
+  function questBoostMult(kind) {
+    const b = state.boost;
+    if (!b || Date.now() > b.until) return 1;
+    return (b.kind === kind || b.kind === 'all') ? b.mult : 1;
+  }
+
+  function questRewardText(reward) {
+    const parts = [];
+    if (reward.maso) parts.push('✦' + fmt(reward.maso));
+    if (reward.shizai) parts.push('▤' + fmt(reward.shizai));
+    if (reward.decor && window.LizaTownModel) {
+      parts.push('装飾「' + window.LizaTownModel.DECOR_DEFS[reward.decor].name + '」');
+    }
+    return parts.join('・');
+  }
+
+  function completeQuest(tpl, extraLine) {
+    state.questActive = state.questActive.filter(id => id !== tpl.id);
+    state.questDone.push(tpl.id);
+    if (tpl.reward) {
+      if (tpl.reward.maso) state.maso += tpl.reward.maso;
+      if (tpl.reward.shizai) state.shizai += tpl.reward.shizai;
+      if (tpl.reward.decor && !state.decor.includes(tpl.reward.decor)) {
+        state.decor.push(tpl.reward.decor);
+        renderFacilities(); // 装飾が街に実際に置かれる
+      }
+    }
+    infoToast('🎉 「' + tpl.from + '」のおねがいを達成! ' + (tpl.reward ? questRewardText(tpl.reward) : ''));
+    if (tpl.speaker) setTimeout(() => speak(tpl.speaker, extraLine), 800);
+    updateQuestBadge();
+    updateAll();
+    save();
+  }
+
+  /* 納品型: 資源を持っていれば届けられる */
+  function claimDelivery(tplId) {
+    const tpl = QUEST_TEMPLATES.find(q => q.id === tplId);
+    if (!tpl || tpl.type !== 'delivery' || !state.questActive.includes(tplId)) return false;
+    if (state[tpl.res] < tpl.amount) return false;
+    state[tpl.res] -= tpl.amount;
+    completeQuest(tpl);
+    return true;
+  }
+
+  /* 達成型: 条件を満たしていれば報告できる */
+  function claimAchieve(tplId) {
+    const tpl = QUEST_TEMPLATES.find(q => q.id === tplId);
+    if (!tpl || tpl.type !== 'achieve' || !state.questActive.includes(tplId)) return false;
+    if (!tpl.cond()) return false;
+    completeQuest(tpl);
+    return true;
+  }
+
+  /* 二択型: どちらを選んでも正解。選んだ側に一時ブースト */
+  function chooseQuest(tplId, optionKey) {
+    const tpl = QUEST_TEMPLATES.find(q => q.id === tplId);
+    if (!tpl || tpl.type !== 'choice' || !state.questActive.includes(tplId)) return false;
+    const opt = tpl.options.find(o => o.key === optionKey);
+    if (!opt) return false;
+    state.boost = {
+      kind: opt.boost.kind,
+      mult: opt.boost.mult,
+      until: Date.now() + opt.boost.min * 60 * 1000,
+    };
+    state.questActive = state.questActive.filter(id => id !== tplId);
+    state.questDone.push(tplId);
+    infoToast('✨ ' + opt.line);
+    updateQuestBadge();
+    updateAll();
+    save();
+    return true;
+  }
+
+  function updateQuestBadge() {
+    const badge = $('quest-badge');
+    const n = state.questActive.length;
+    badge.textContent = String(n);
+    badge.hidden = n === 0;
+    $('quest-board-btn').classList.toggle('unread', !!state.questUnread && n > 0);
+  }
+
+  function showQuestModal() {
+    state.questUnread = false;
+    updateQuestBadge();
+    const wrap = document.createElement('div');
+    if (state.questActive.length === 0) {
+      const empty = document.createElement('div');
+      empty.className = 'settings-row';
+      empty.textContent = '今は新しいおねがいは届いていない。街が育てば、また誰かが頼ってくる。';
+      wrap.appendChild(empty);
+    }
+    for (const id of state.questActive) {
+      const tpl = QUEST_TEMPLATES.find(q => q.id === id);
+      if (!tpl) continue;
+      const card = document.createElement('div');
+      card.className = 'quest-card';
+      const head = document.createElement('div');
+      head.className = 'quest-from';
+      head.textContent = tpl.from;
+      const title = document.createElement('div');
+      title.className = 'quest-title';
+      title.textContent = tpl.title;
+      const note = document.createElement('div');
+      note.className = 'quest-note';
+      note.textContent = '「' + tpl.note + '」';
+      card.appendChild(head);
+      card.appendChild(title);
+      card.appendChild(note);
+
+      if (tpl.type === 'delivery') {
+        const prog = document.createElement('div');
+        prog.className = 'quest-prog';
+        const cur = Math.floor(state[tpl.res]);
+        prog.textContent = '所持: ' + (tpl.res === 'maso' ? '✦' : '▤') + fmt(cur) + ' ／ ' + tpl.amount;
+        card.appendChild(prog);
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'quest-btn';
+        btn.textContent = '届ける（報酬: ' + questRewardText(tpl.reward) + '）';
+        btn.disabled = cur < tpl.amount;
+        btn.addEventListener('click', () => { if (claimDelivery(tpl.id)) showQuestModal(); });
+        card.appendChild(btn);
+      } else if (tpl.type === 'achieve') {
+        const done = tpl.cond();
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'quest-btn';
+        btn.textContent = done
+          ? '達成を報告する（報酬: ' + questRewardText(tpl.reward) + '）'
+          : 'まだ達成していない（報酬: ' + questRewardText(tpl.reward) + '）';
+        btn.disabled = !done;
+        btn.addEventListener('click', () => { if (claimAchieve(tpl.id)) showQuestModal(); });
+        card.appendChild(btn);
+      } else if (tpl.type === 'choice') {
+        for (const opt of tpl.options) {
+          const btn = document.createElement('button');
+          btn.type = 'button';
+          btn.className = 'quest-btn quest-choice';
+          btn.textContent = opt.label;
+          btn.addEventListener('click', () => { if (chooseQuest(tpl.id, opt.key)) closeModal(); });
+          card.appendChild(btn);
+        }
+      }
+      wrap.appendChild(card);
+    }
+    openModal('街のおねがい', wrap);
   }
 
   /* ============================================================
@@ -1174,7 +1470,10 @@
     // 小さな光の粒が1〜3個ふわっと舞い上がる（同時表示数を制限）
     // ジオラマでは「はじまりのランタン」から舞い上がる。夜は粒が華やぐ
     let sx = x, sy = y;
-    if (dioramaOn()) {
+    if (glOn()) {
+      const p = window.LizaTown3D.lanternPoint();
+      if (p) { sx = p.x; sy = p.y; }
+    } else if (dioramaOn()) {
       const p = window.LizaTown.lanternPoint();
       if (p) { sx = p.x; sy = p.y; }
     }
@@ -1217,8 +1516,8 @@
   function currentGoal() {
     if (state.lv.lantern === 0) {
       return state.maso < 15
-        ? 'ひかりを 集めよう（街をタップ!）'
-        : 'ランタン工房を たてよう';
+        ? '光を集めよう（街をタップ!）'
+        : 'ランタン工房を建てよう';
     }
     // 2種類以上たてられるときは、選択を奪わない問いかけにする
     let affordable = 0;
@@ -1226,17 +1525,17 @@
       const c = costOf(fac, state.lv[fac.id]);
       if (state.maso >= c.maso && state.shizai >= c.shizai) affordable++;
     }
-    if (affordable >= 2) return 'つぎは どれを そだてる?';
-    if (state.lv.market === 0) return '市場を たてよう';
-    if (state.maxStage >= 2 && state.lv.school === 0) return '学問所を たてよう（もくざいが いる）';
-    if (state.maxStage >= 3 && state.lv.clinic === 0) return '救護院を たてよう';
-    if (state.maxStage >= 3 && state.lv.lights === 0) return '街灯網を つくろう';
+    if (affordable >= 2) return '次はどれを育てる?';
+    if (state.lv.market === 0) return '市場を建てよう';
+    if (state.maxStage >= 2 && state.lv.school === 0) return '学問所を建てよう（木材が必要）';
+    if (state.maxStage >= 3 && state.lv.clinic === 0) return '救護院を建てよう';
+    if (state.maxStage >= 3 && state.lv.lights === 0) return '街灯網を整備しよう';
     if (state.maxStage < 5) {
       const next = STAGES[state.maxStage];
       const rest = Math.max(0, next.th - devPoints());
-      return 'かがやき' + next.th + 'で 『' + next.name + '』になる（あと' + rest + '）';
+      return '輝き' + next.th + 'で『' + next.name + '』になる（あと' + rest + '）';
     }
-    return 'ひかりの海を、もっと ひろげよう';
+    return '光の海を、さらに広げよう';
   }
 
   let lastGoal = '';
@@ -1259,8 +1558,8 @@
     $('res-people').textContent = fmt(residents());
     const next = state.maxStage < 5 ? STAGES[state.maxStage] : null;
     $('stage-glow').textContent = next
-      ? 'かがやき ' + fmt(devPoints()) + '／' + next.th
-      : 'かがやき ' + fmt(devPoints());
+      ? '輝き ' + fmt(devPoints()) + '／' + next.th
+      : '輝き ' + fmt(devPoints());
   }
 
   function updateAll() {
@@ -1291,6 +1590,7 @@
 
     state.cyclePos = (state.cyclePos + dt) % CYCLE_LEN;
     updatePhase();
+    if (glOn()) window.LizaTown3D.setCycle(state.cyclePos, CYCLE_LEN);
     state.maso += masoPerSec() * dt;
     state.shizai += shizaiPerSec() * dt;
     updateAll();
@@ -1317,6 +1617,10 @@
         lastResidents: state.lastResidents,
         cyclePos: state.cyclePos,
         pages: state.pages,
+        questActive: state.questActive,
+        questDone: state.questDone,
+        decor: state.decor,
+        boost: state.boost,
         lastSaved: state.lastSaved,
       }));
     } catch (e) { /* プライベートモード等で保存できない場合は無視 */ }
@@ -1347,6 +1651,17 @@
       state.pages = Array.isArray(d.pages)
         ? d.pages.filter(id => validIds.includes(id))
         : [];
+      const questIds = QUEST_TEMPLATES.map(q => q.id);
+      state.questActive = Array.isArray(d.questActive)
+        ? d.questActive.filter(id => questIds.includes(id)).slice(0, QUEST_MAX_ACTIVE)
+        : [];
+      state.questDone = Array.isArray(d.questDone)
+        ? d.questDone.filter(id => questIds.includes(id))
+        : [];
+      state.decor = Array.isArray(d.decor) ? d.decor.filter(x => typeof x === 'string') : [];
+      state.boost = (d.boost && Number(d.boost.until) > Date.now())
+        ? { kind: String(d.boost.kind), mult: Number(d.boost.mult) || 1, until: Number(d.boost.until) }
+        : null;
       state.lastSaved = Number(d.lastSaved) || Date.now();
       // 整合性：保存時より発展度が高ければ静かに段階を合わせる
       const s = stageFor(devPoints());
@@ -1396,15 +1711,38 @@
      起動
      ============================================================ */
 
+  /* 3Dビューでタップした施設のカードへスクロール＆ハイライト */
+  function highlightFacilityCard(id) {
+    const r = cardRefs[id];
+    if (!r) return;
+    const card = r.btn.closest('.card');
+    if (!card) return;
+    card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    card.classList.remove('hl');
+    void card.offsetWidth;
+    card.classList.add('hl');
+    setTimeout(() => card.classList.remove('hl'), 1600);
+  }
+
   const hadSave = load();
   checkPages(true); // 条件を満たしているページは静かに解放（「この世界」含む）
   shown.maso = state.maso;
   shown.shizai = state.shizai;
   buildFacilityList();
+
+  /* Three.js 街ビューの初期化（失敗時はCSSジオラマへ自動フォールバック） */
+  if (window.LIZA_USE_3D !== false && window.LizaTown3D && window.LizaTownModel) {
+    window.LizaTown3D.init(cityEl, { onFacilityTap: highlightFacilityCard });
+  }
+
   renderCity();
   updatePhase();
+  if (glOn()) window.LizaTown3D.setCycle(state.cyclePos, CYCLE_LEN);
   updateAll();
+  updateQuestBadge();
+  $('quest-board-btn').addEventListener('click', showQuestModal);
   scheduleWish();
+  scheduleQuestCheck();
   if (state.maso > 0 || totalLv() > 0) {
     tapHint.classList.add('hidden');
   }
@@ -1413,7 +1751,11 @@
   }
 
   // テスト用フック（ゲームプレイには影響しない）
-  window.__lizaDev = { spawnWish, phaseAt, wishReward };
+  window.__lizaDev = {
+    spawnWish, phaseAt, wishReward,
+    spawnQuest, claimDelivery, claimAchieve, chooseQuest,
+    questEligible, questBoostMult, QUEST_TEMPLATES, viewMode,
+  };
 
   setInterval(tick, 100);
   setInterval(save, 5000);

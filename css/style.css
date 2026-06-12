@@ -1287,3 +1287,111 @@ rt { font-size: 0.55em; opacity: 0.8; letter-spacing: 0; }
 .page-locked { opacity: 0.8; }
 .page-locked .page-title { color: var(--ink-dim); }
 .page-locked .page-text { color: var(--ink-dim); font-size: 11px; }
+
+/* ============================================================
+   街のおねがい（依頼システム）
+   ============================================================ */
+
+#quest-board-btn {
+  position: absolute;
+  top: 10px; right: 10px;
+  width: 48px; height: 48px;
+  border-radius: 14px;
+  background: linear-gradient(to bottom, var(--paper), var(--paper-2));
+  border: 2px solid var(--line-warm);
+  box-shadow: 0 3px 8px rgba(20, 10, 4, 0.35);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 0.12s cubic-bezier(0.34, 1.8, 0.5, 1);
+  z-index: 6;
+}
+#quest-board-btn:active { transform: scale(0.9); }
+#quest-board-btn.unread { animation: boardWiggle 2.2s ease-in-out infinite; }
+@keyframes boardWiggle {
+  0%, 100% { transform: rotate(0); }
+  6% { transform: rotate(-5deg); }
+  12% { transform: rotate(4deg); }
+  18% { transform: rotate(0); }
+}
+/* 掲示板アイコン（CSS自作） */
+#quest-board-icon {
+  position: relative;
+  width: 22px; height: 17px;
+  border-radius: 3px;
+  background: #b08a5e;
+  border: 2px solid #6e5a45;
+}
+#quest-board-icon::before {
+  content: "";
+  position: absolute;
+  left: 3px; top: 3px;
+  width: 12px; height: 2px;
+  background: #f6edd9;
+  box-shadow: 0 4px 0 #f6edd9;
+}
+#quest-board-icon::after {
+  content: "";
+  position: absolute;
+  left: 8px; top: -8px;
+  width: 3px; height: 7px;
+  background: #6e5a45;
+}
+#quest-badge {
+  position: absolute;
+  top: -6px; right: -6px;
+  min-width: 20px; height: 20px;
+  border-radius: 10px;
+  background: var(--danger);
+  color: #fff;
+  font-size: 12px;
+  font-weight: bold;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 2px solid var(--paper);
+}
+
+.quest-card {
+  background: rgba(255, 255, 255, 0.45);
+  border: 1.5px solid var(--line-warm);
+  border-radius: 16px;
+  padding: 11px 13px;
+  margin-bottom: 12px;
+}
+.quest-from { font-size: 10px; font-weight: bold; color: #a06a10; letter-spacing: 1px; }
+.quest-title { font-size: 14px; font-weight: bold; color: var(--ink); margin: 3px 0; }
+.quest-note { font-size: 11.5px; color: var(--ink-soft); margin-bottom: 6px; }
+.quest-prog { font-size: 12px; font-weight: bold; color: #8a5410; margin-bottom: 6px; }
+.quest-btn {
+  display: block;
+  width: 100%;
+  min-height: 46px;
+  margin-top: 6px;
+  border-radius: 13px;
+  font-size: 12.5px;
+  font-weight: bold;
+  color: #4a2a06;
+  background: linear-gradient(to bottom, var(--honey), var(--kohaku));
+  border: 1.5px solid rgba(140, 80, 10, 0.4);
+  transition: transform 0.12s cubic-bezier(0.34, 1.8, 0.5, 1);
+}
+.quest-btn:active { transform: scale(0.95); }
+.quest-btn:disabled {
+  background: var(--paper-3);
+  color: var(--ink-soft);
+  border-color: rgba(122, 90, 50, 0.25);
+}
+.quest-btn.quest-choice { background: linear-gradient(to bottom, #ffe9c0, #f4b85a); }
+
+/* 3Dビューでタップした施設のカードを知らせる */
+.card.hl { animation: cardHl 1.5s ease-out; }
+@keyframes cardHl {
+  0% { box-shadow: 0 0 0 3px rgba(240, 150, 46, 0.9), 0 3px 10px rgba(30, 18, 8, 0.35); }
+  100% { box-shadow: 0 0 0 0 rgba(240, 150, 46, 0), 0 3px 10px rgba(30, 18, 8, 0.35); }
+}
+
+/* Three.js使用時はDOMの空・旧演出を消す（シーンが空も描く） */
+#city-view.gl #stars, #city-view.gl #moon, #city-view.gl #sky-tints,
+#city-view.gl #clouds, #city-view.gl #ground, #city-view.gl #market-glow,
+#city-view.gl #diorama { display: none; }

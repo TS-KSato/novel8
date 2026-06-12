@@ -12,7 +12,7 @@
 <div id="app">
 
   <!-- 街ビュー -->
-  <header id="city-view" class="stage-1 t-night" aria-label="街ビュー（タップでひかりを獲得）">
+  <header id="city-view" class="stage-1 t-night" aria-label="街ビュー（タップで光を獲得）">
     <div id="stars"></div>
     <div id="moon"></div>
     <div id="sky-tints">
@@ -37,31 +37,35 @@
     <div id="wave"></div>
     <div id="wish-layer"></div>
     <div id="tap-layer"></div>
+    <button type="button" id="quest-board-btn" aria-label="街のおねがい">
+      <span id="quest-board-icon"></span>
+      <span id="quest-badge" hidden>0</span>
+    </button>
     <div id="stage-banner">
       <span id="stage-no">段階 1</span>
       <span id="stage-name">泥のアジト</span>
-      <span id="stage-glow">かがやき 0／5</span>
+      <span id="stage-glow">輝き 0／5</span>
     </div>
-    <div id="tap-hint">街をタップして ひかりを集めよう</div>
+    <div id="tap-hint">街をタップして光を集めよう</div>
   </header>
 
   <!-- 資源表示バー -->
   <section id="resource-bar" aria-label="資源表示">
     <div id="res-grid">
       <div class="res">
-        <span class="res-label">✦ ひかり</span>
+        <span class="res-label">✦ 光</span>
         <span class="res-value" id="res-maso">0</span>
         <span class="res-rate" id="rate-maso">+0/秒</span>
       </div>
       <div class="res">
-        <span class="res-label">▤ もくざい</span>
+        <span class="res-label">▤ 木材</span>
         <span class="res-value" id="res-shizai">0</span>
         <span class="res-rate" id="rate-shizai">+0/秒</span>
       </div>
       <div class="res">
         <span class="res-label">🏠 住人</span>
         <span class="res-value" id="res-people">0</span>
-        <span class="res-rate">この街の なかま</span>
+        <span class="res-rate">この街の仲間</span>
       </div>
     </div>
     <div id="goal-chip" aria-label="次の目標">
@@ -72,7 +76,7 @@
 
   <!-- 施設リスト -->
   <main id="facility-area">
-    <h2 id="facility-heading">しせつ</h2>
+    <h2 id="facility-heading">施設</h2>
     <ul id="facility-list"></ul>
   </main>
 
@@ -82,13 +86,13 @@
       <span class="tab-icon icon-home" aria-hidden="true"></span><span class="tab-label">街</span>
     </button>
     <button type="button" class="tab" data-tab="facility">
-      <span class="tab-icon icon-build" aria-hidden="true"></span><span class="tab-label">しせつ</span>
+      <span class="tab-icon icon-build" aria-hidden="true"></span><span class="tab-label">施設</span>
     </button>
     <button type="button" class="tab" data-tab="records">
-      <span class="tab-icon icon-book" aria-hidden="true"></span><span class="tab-label">ずかん</span>
+      <span class="tab-icon icon-book" aria-hidden="true"></span><span class="tab-label">図鑑</span>
     </button>
     <button type="button" class="tab" data-tab="settings">
-      <span class="tab-icon icon-gear" aria-hidden="true"></span><span class="tab-label">せってい</span>
+      <span class="tab-icon icon-gear" aria-hidden="true"></span><span class="tab-label">設定</span>
     </button>
   </nav>
 
@@ -102,7 +106,7 @@
 
 <!-- オープニング「約束」 -->
 <div id="opening" class="scene-1" hidden>
-  <button type="button" id="op-skip">とばす</button>
+  <button type="button" id="op-skip">スキップ</button>
   <div id="op-stage">
     <div id="op-friends">
       <span class="op-friend f1"></span>
@@ -113,8 +117,8 @@
     <div id="op-lantern"></div>
   </div>
   <p id="op-text"></p>
-  <p id="op-next-hint">タップで すすむ</p>
-  <button type="button" id="op-start" hidden>はじめる</button>
+  <p id="op-next-hint">タップで進む</p>
+  <button type="button" id="op-start" hidden>始める</button>
   <div id="op-flash"></div>
 </div>
 
@@ -124,10 +128,13 @@
     <div id="modal-lamp"></div>
     <h3 id="modal-title"></h3>
     <div id="modal-body"></div>
-    <button type="button" id="modal-close">とじる</button>
+    <button type="button" id="modal-close">閉じる</button>
   </div>
 </div>
 
+<script src="vendor/three.min.js"></script>
+<script src="js/town-model.js"></script>
+<script src="js/town3js.js"></script>
 <script src="js/town3d.js"></script>
 <script src="js/main.js"></script>
 </body>
