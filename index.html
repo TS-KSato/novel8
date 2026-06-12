@@ -6,6 +6,7 @@
 <meta name="theme-color" content="#0b1026">
 <title>灯火の街リーザ</title>
 <link rel="stylesheet" href="css/style.css">
+<link rel="stylesheet" href="css/town3d.css">
 </head>
 <body>
 <div id="app">
@@ -32,6 +33,7 @@
     <div id="resident-lights"></div>
     <div id="ambient-lights"></div>
     <div id="market-glow"></div>
+    <div id="diorama"></div>
     <div id="wave"></div>
     <div id="wish-layer"></div>
     <div id="tap-layer"></div>
@@ -76,10 +78,18 @@
 
   <!-- フッターメニュー -->
   <nav id="footer-menu" aria-label="メニュー">
-    <button type="button" class="tab active" data-tab="city">街</button>
-    <button type="button" class="tab" data-tab="facility">しせつ</button>
-    <button type="button" class="tab" data-tab="records">ずかん</button>
-    <button type="button" class="tab" data-tab="settings">せってい</button>
+    <button type="button" class="tab active" data-tab="city">
+      <span class="tab-icon icon-home" aria-hidden="true"></span><span class="tab-label">街</span>
+    </button>
+    <button type="button" class="tab" data-tab="facility">
+      <span class="tab-icon icon-build" aria-hidden="true"></span><span class="tab-label">しせつ</span>
+    </button>
+    <button type="button" class="tab" data-tab="records">
+      <span class="tab-icon icon-book" aria-hidden="true"></span><span class="tab-label">ずかん</span>
+    </button>
+    <button type="button" class="tab" data-tab="settings">
+      <span class="tab-icon icon-gear" aria-hidden="true"></span><span class="tab-label">せってい</span>
+    </button>
   </nav>
 
 </div>
@@ -118,6 +128,7 @@
   </div>
 </div>
 
+<script src="js/town3d.js"></script>
 <script src="js/main.js"></script>
 </body>
 </html>
