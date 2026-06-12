@@ -6,15 +6,44 @@
    - ジオメトリはすべてコード生成。外部モデル・テクスチャ・画像なし
    - WebGL非対応／初期化失敗時は ready=false のままにして、
      main.js が CSSジオラマ（town3d.js）へ自動フォールバックする
-   - 性能: pixelRatio上限1.5 / 影は512px1枚 / 共有ジオメトリ・
-     共有マテリアルでドローコールを抑制 / transformのみのアニメ
+
+   カメラ: OrthographicCamera（平行投影）による安定したアイソメ風俯瞰。
+   影: 太陽角度を30秒ごとに離散更新（2秒で補間）し、毎フレームの
+       連続回転による影のチラつきを根絶。frustumは盤面にタイトに合わせ、
+       細いパーツは影を落とさない。夜は太陽影を無効化（月影なし）。
    ============================================================ */
 (() => {
   'use strict';
 
+  /* ---------- 調整用定数 ---------- */
+
+  /* カメラ（アイソメ風・平行投影） */
+  const CAM = {
+    elevDeg: 52,     // 俯瞰角（50〜55度）
+    azimDeg: 45,     // 方位角（盤面の角が手前に来るダイヤモンド配置）
+    viewHeight: 14,  // 縦に収めるワールド単位（ズーム。小さいほど寄る）
+    dist: 28,        // カメラ距離（平行投影では構図に影響しない）
+    lookAtY: 0.3,
+  };
+
+  /* 影（チラつき対策の核心） */
+  const SHADOW = {
+    stepSec: 30,   // 太陽角度はゲーム内30秒ごとに更新（連続回転させない）
+    blendSec: 2,   // 更新時は2秒かけて滑らかに補間
+    mapSize: 1024,
+    frustum: 8.0,  // 盤面12×12にタイトに合わせる
+    bias: -0.0004,
+    normalBias: 0.03,
+  };
+
+  /* 露出（パステル調の明るさ） */
+  const EXPOSURE = 1.18;
+
   const T = {
     ready: false,
+    CAM, SHADOW,
     init, render, setCycle, animateFacility, lanternPoint, spawnWish,
+    quantizeSunPos, // テスト用：影の角度更新の離散化ロジック
   };
   window.LizaTown3D = T;
 
@@ -22,17 +51,16 @@
   let host, canvas;
   let townGroup = null;
   let cyclePos = 170, cycleLen = 240;
-  let windows = [];   // { mat, delay, always }
-  let flags = [];     // { mesh, seed }
-  let smokes = [];    // { sprite, seed, baseX, baseY, baseZ }
-  let facGroups = {}; // facId -> group
-  let bounces = [];   // { group, t0 }
-  let wish = null;    // { group, kind, onCatch, expireAt }
+  let windows = [];
+  let flags = [];
+  let smokes = [];
+  let facGroups = {};
+  let bounces = [];
+  let wish = null;
   let lanternHeadMesh = null;
   let onFacilityTapCb = null;
-  let raf = 0;
 
-  /* 共有ジオメトリ（unitサイズをscaleして使い回す） */
+  /* 共有ジオメトリ */
   let GEO = null;
   function geos() {
     if (GEO) return GEO;
@@ -70,8 +98,10 @@
       });
       renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));
       renderer.shadowMap.enabled = true;
-      renderer.shadowMap.type = THREE.PCFShadowMap;
+      renderer.shadowMap.type = THREE.PCFSoftShadowMap;
       renderer.outputEncoding = THREE.sRGBEncoding;
+      renderer.toneMapping = THREE.ACESFilmicToneMapping;
+      renderer.toneMappingExposure = EXPOSURE;
 
       canvas = renderer.domElement;
       canvas.id = 'gl-canvas';
@@ -80,33 +110,39 @@
       host.insertBefore(canvas, host.firstChild);
 
       scene = new THREE.Scene();
-      scene.background = new THREE.Color(0x1a2450);
-      scene.fog = new THREE.Fog(0x1a2450, 22, 40);
+      scene.background = new THREE.Color(0x32406e);
+      scene.fog = new THREE.Fog(0x32406e, 30, 60);
 
-      /* 約40度見下ろしの固定俯瞰。下半分のUIを妨げない構図 */
-      camera = new THREE.PerspectiveCamera(38, 1, 0.1, 60);
-      camera.position.set(0, 13.2, 12.4);
-      camera.lookAt(0, -0.4, 0);
+      /* アイソメ風の平行投影カメラ */
+      camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 80);
+      placeCamera();
 
-      hemi = new THREE.HemisphereLight(0xbecbe8, 0x6e5a45, 0.85);
+      /* 半球光を主光源に（空=薄青白、地=暖ベージュ） */
+      hemi = new THREE.HemisphereLight(0xf2f7fc, 0xe6d6b8, 1.0);
       scene.add(hemi);
 
-      sun = new THREE.DirectionalLight(0xfff4e0, 0.9);
+      /* 太陽は補助+影用。角度は離散更新 */
+      sun = new THREE.DirectionalLight(0xfff2dd, 0.55);
       sun.castShadow = true;
-      sun.shadow.mapSize.set(512, 512);
-      sun.shadow.camera.left = -9; sun.shadow.camera.right = 9;
-      sun.shadow.camera.top = 9; sun.shadow.camera.bottom = -9;
+      sun.shadow.mapSize.set(SHADOW.mapSize, SHADOW.mapSize);
+      sun.shadow.camera.left = -SHADOW.frustum;
+      sun.shadow.camera.right = SHADOW.frustum;
+      sun.shadow.camera.top = SHADOW.frustum;
+      sun.shadow.camera.bottom = -SHADOW.frustum;
+      sun.shadow.camera.near = 1;
       sun.shadow.camera.far = 50;
+      sun.shadow.bias = SHADOW.bias;
+      sun.shadow.normalBias = SHADOW.normalBias;
       scene.add(sun);
+      scene.add(sun.target);
 
-      /* はじまりのランタンの光（夜の存在感） */
-      lanternLight = new THREE.PointLight(0xffb24d, 1.0, 9, 2);
+      lanternLight = new THREE.PointLight(0xffc173, 1.0, 9, 2);
       lanternLight.position.set(0, 1.6, 0);
       scene.add(lanternLight);
 
       resize();
       window.addEventListener('resize', resize);
-      host.addEventListener('pointerdown', onPointerDown, true); // captureで願い星を先取り
+      host.addEventListener('pointerdown', onPointerDown, true);
 
       T.ready = true;
       animate();
@@ -118,12 +154,28 @@
     }
   }
 
+  function placeCamera() {
+    const elev = CAM.elevDeg * Math.PI / 180;
+    const azim = CAM.azimDeg * Math.PI / 180;
+    const r = CAM.dist;
+    camera.position.set(
+      Math.cos(elev) * Math.sin(azim) * r,
+      Math.sin(elev) * r,
+      Math.cos(elev) * Math.cos(azim) * r);
+    camera.lookAt(0, CAM.lookAtY, 0);
+  }
+
   function resize() {
     if (!renderer || !host) return;
     const w = host.clientWidth || 390;
     const h = host.clientHeight || 300;
     renderer.setSize(w, h);
-    camera.aspect = w / h;
+    const aspect = w / h;
+    const halfH = CAM.viewHeight / 2;
+    camera.top = halfH;
+    camera.bottom = -halfH;
+    camera.left = -halfH * aspect;
+    camera.right = halfH * aspect;
     camera.updateProjectionMatrix();
   }
 
@@ -169,7 +221,8 @@
         return null;
     }
     mesh.position.set(p.x, p.y, p.z);
-    mesh.castShadow = p.kind !== 'plane';
+    // 細い・小さいパーツは影を落とさない（低解像度影でのチラつき対策）
+    mesh.castShadow = !p.noShadow && p.kind !== 'plane';
     mesh.receiveShadow = false;
 
     if (p.win) windows.push({ mat: mesh.material, delay: p.delay || 0, always: !!p.always });
@@ -181,20 +234,17 @@
   function addSmoke(p) {
     for (let i = 0; i < 3; i++) {
       const sm = new THREE.Sprite(new THREE.SpriteMaterial({
-        color: 0xd8d4cc, transparent: true, opacity: 0.45,
+        color: 0xeeeae2, transparent: true, opacity: 0.45,
       }));
       sm.scale.setScalar(0.22);
       smokes.push({ sprite: sm, seed: i * 2.1 + Math.random(), baseX: p.x, baseY: p.y + 0.35, baseZ: p.z });
     }
   }
 
-  function groundColor(stage) {
-    return [0, 0x8a7a55, 0x86805a, 0x8d8572, 0x948c78, 0x9a9280][stage] || 0x8a7a55;
-  }
-
   function render(data) {
     if (!T.ready || !window.LizaTownModel) return;
     const model = window.LizaTownModel.buildTownModel(data);
+    const P = window.LizaTownModel.PALETTE;
 
     if (townGroup) scene.remove(townGroup);
     windows = []; flags = []; smokes = []; facGroups = {};
@@ -202,60 +252,63 @@
 
     /* 島型ボード（台座の厚みでジオラマ感） */
     const S = model.board.size;
-    const base = new THREE.Mesh(geos().box, matOf(0x6e5a45));
+    const base = new THREE.Mesh(geos().box, matOf(P.baseSide));
     base.scale.set(S, model.board.thickness, S);
     base.position.y = -model.board.thickness / 2;
     base.receiveShadow = true;
     townGroup.add(base);
 
-    const top = new THREE.Mesh(geos().box, matOf(groundColor(model.stage)));
+    const groundColors = [0, P.ground1, P.ground2, P.ground3, P.ground4, P.ground5];
+    const top = new THREE.Mesh(geos().box, matOf(groundColors[model.stage] || P.ground1));
     top.scale.set(S, 0.1, S);
     top.position.y = 0.0;
     top.receiveShadow = true;
     townGroup.add(top);
 
-    /* 草地のパッチ */
+    /* 緑地：のっぺりした円ではなく、低い丘状にして馴染ませる */
     const rngP = (s => () => (s = (s * 16807) % 2147483647) / 2147483647)(model.stage * 99 + 7);
-    for (let i = 0; i < model.bushes + 4; i++) {
-      const patch = new THREE.Mesh(geos().disc, matOf(0x6f8a4a));
-      const pr = 0.6 + rngP() * 0.9;
-      patch.scale.set(pr * 2, 0.6, pr * 2);
-      patch.position.set((rngP() - 0.5) * (S - 2.5), 0.04, (rngP() - 0.5) * (S - 2.5));
-      patch.receiveShadow = true;
-      townGroup.add(patch);
+    for (let i = 0; i < model.mounds; i++) {
+      const mound = new THREE.Mesh(geos().sphere, matOf(i % 2 === 0 ? P.grass : P.grassDark));
+      const pr = 0.9 + rngP() * 1.2;
+      mound.scale.set(pr * 2, 0.28, pr * 2);
+      mound.position.set((rngP() - 0.5) * (S - 3), 0.02, (rngP() - 0.5) * (S - 3));
+      mound.receiveShadow = true;
+      mound.castShadow = false;
+      townGroup.add(mound);
     }
 
-    /* 道と広場（段階で石畳に） */
-    const roadColor = model.stage >= 5 ? 0x7d766a : model.stage >= 3 ? 0x756d62 : 0x7a6a50;
+    /* 道と広場 */
+    const roadColor = model.stage >= 3 ? P.road : P.roadEarly;
     for (const r of model.roads) {
       const road = new THREE.Mesh(geos().box, matOf(roadColor));
       road.scale.set(r.w, 0.06, r.l);
       road.position.set(r.x, 0.09, r.z);
       road.receiveShadow = true;
+      road.castShadow = false;
       townGroup.add(road);
     }
-    const plaza = new THREE.Mesh(geos().disc, matOf(model.stage >= 3 ? 0x8d857a : 0x84745a));
+    const plaza = new THREE.Mesh(geos().disc, matOf(P.plaza));
     plaza.scale.set(model.plaza.r * 2, 1, model.plaza.r * 2);
     plaza.position.y = 0.08;
     plaza.receiveShadow = true;
+    plaza.castShadow = false;
     townGroup.add(plaza);
 
     if (model.canal) {
       const canal = new THREE.Mesh(geos().box, new THREE.MeshLambertMaterial({
-        color: 0x5e9ec8, emissive: 0x2a4a66, emissiveIntensity: 0.4,
+        color: P.water, emissive: 0x3a6a8a, emissiveIntensity: 0.25,
       }));
       canal.scale.set(S, 0.05, 0.55);
       canal.position.set(0, 0.1, 2.75);
+      canal.castShadow = false;
       townGroup.add(canal);
     }
 
-    /* 茂み */
-    for (let i = 0; i < model.bushes; i++) {
-      const b = new THREE.Mesh(geos().sphere, matOf(0x5c7a3c));
-      b.scale.set(0.5, 0.32, 0.5);
-      b.position.set((rngP() - 0.5) * (S - 3), 0.16, (rngP() - 0.5) * (S - 3));
-      b.castShadow = true;
-      townGroup.add(b);
+    /* 木（幹+葉のローポリツリー） */
+    for (const t of model.trees) {
+      const grp = buildParts(t.parts);
+      grp.position.set(t.x, 0.1, t.z);
+      townGroup.add(grp);
     }
 
     /* 段階4+の花壇 */
@@ -267,17 +320,18 @@
 
     /* はじまりのランタン（広場の中心・常時灯る） */
     const lant = new THREE.Group();
-    const pole = new THREE.Mesh(geos().cyl, matOf(0x4a4038));
+    const pole = new THREE.Mesh(geos().cyl, matOf(P.woodDark));
     pole.scale.set(0.12, 1.5, 0.12);
     pole.position.y = 0.75;
     pole.castShadow = true;
     lant.add(pole);
     const headMat = new THREE.MeshLambertMaterial({
-      color: 0xffe9b0, emissive: 0xffb24d, emissiveIntensity: 1,
+      color: P.glassWarm, emissive: P.lanternGlow, emissiveIntensity: 1,
     });
     lanternHeadMesh = new THREE.Mesh(geos().sphere, headMat);
     lanternHeadMesh.scale.setScalar(0.34);
     lanternHeadMesh.position.y = 1.62;
+    lanternHeadMesh.castShadow = false;
     lant.add(lanternHeadMesh);
     windows.push({ mat: headMat, delay: 0, always: true });
     lant.position.y = 0.1;
@@ -293,20 +347,21 @@
       townGroup.add(grp);
     }
 
-    /* 街灯 */
+    /* 街灯（細いポールは影を落とさない） */
     for (const l of model.lamps) {
       const grp = new THREE.Group();
-      const p = new THREE.Mesh(geos().cyl, matOf(0x4e4238));
+      const p = new THREE.Mesh(geos().cyl, matOf(P.woodDark));
       p.scale.set(0.07, 1.1, 0.07);
       p.position.y = 0.55;
-      p.castShadow = true;
+      p.castShadow = false;
       grp.add(p);
       const gm = new THREE.MeshLambertMaterial({
-        color: 0xffe2a0, emissive: 0xffc873, emissiveIntensity: 0,
+        color: P.glassWarm, emissive: P.windowLit, emissiveIntensity: 0,
       });
       const gl = new THREE.Mesh(geos().sphere, gm);
       gl.scale.setScalar(0.2);
       gl.position.y = 1.15;
+      gl.castShadow = false;
       grp.add(gl);
       windows.push({ mat: gm, delay: l.delay, always: false });
       grp.position.set(l.x, 0.1, l.z);
@@ -319,20 +374,18 @@
     for (const h of model.homes) {
       const grp = buildParts(h.parts);
       grp.position.set(h.x, 0.1, h.z);
-      grp.rotation.y = (h.rotY % (Math.PI / 2)) - Math.PI / 4; // 道に程よく沿う
+      grp.rotation.y = (h.rotY % (Math.PI / 2)) - Math.PI / 4;
       townGroup.add(grp);
     }
 
-    /* 依頼報酬の装飾（街が豊かになっていく） */
+    /* 依頼報酬の装飾 */
     for (const d of model.decorations) {
       const grp = buildParts(d.parts);
       grp.position.set(d.x, 0.1, d.z);
       townGroup.add(grp);
     }
 
-    /* 煙スプライトをシーンに */
     for (const s of smokes) townGroup.add(s.sprite);
-
     scene.add(townGroup);
   }
 
@@ -346,58 +399,101 @@
   }
 
   /* ---------- 昼夜サイクル ----------
-     朝50/昼70/夕50/夜70（秒）の連続値から光と空を補間する */
+     色・強さは毎フレーム連続補間（チラつかない）。
+     影を作る太陽の「角度」だけは30秒ごとの離散更新+2秒補間。 */
+
   function setCycle(pos, len) {
     cyclePos = pos;
     if (len) cycleLen = len;
   }
 
+  /* パステル調の昼夜キーフレーム（空・太陽・半球光） */
   const KEYS = [
-    // t(秒), 空, 太陽色, 太陽強さ, 仰角(deg), 半球光(空/地), 霧
-    { t: 0,   sky: 0x8fa3cf, sunC: 0xffd9a8, sunI: 0.62, elev: 14, hemiS: 0xb8c4e2, hemiG: 0x7a6450, hemiI: 0.8 },
-    { t: 85,  sky: 0x9cc4ec, sunC: 0xfff4e0, sunI: 1.0,  elev: 62, hemiS: 0xcfe2f4, hemiG: 0x8a7a5c, hemiI: 1.0 },
-    { t: 145, sky: 0xd28a5e, sunC: 0xff9858, sunI: 0.6,  elev: 10, hemiS: 0xd2a080, hemiG: 0x6e5a45, hemiI: 0.75 },
-    { t: 205, sky: 0x141d40, sunC: 0x8aa4d8, sunI: 0.3,  elev: 42, hemiS: 0x3a4470, hemiG: 0x2c2620, hemiI: 0.5 },
-    { t: 240, sky: 0x8fa3cf, sunC: 0xffd9a8, sunI: 0.62, elev: 14, hemiS: 0xb8c4e2, hemiG: 0x7a6450, hemiI: 0.8 },
+    // t(秒), 空, 太陽色, 太陽強さ, 仰角(deg), 半球光(空/地/強さ)
+    { t: 0,   sky: 0xcfe0f4, sunC: 0xffe2bb, sunI: 0.5,  elev: 20, hemiS: 0xe8f0fa, hemiG: 0xe0cdb0, hemiI: 0.92 },
+    { t: 85,  sky: 0xb5d9f7, sunC: 0xfff2dd, sunI: 0.62, elev: 60, hemiS: 0xf2f7fc, hemiG: 0xe6d6b8, hemiI: 1.08 },
+    { t: 145, sky: 0xf0b88c, sunC: 0xffb070, sunI: 0.5,  elev: 14, hemiS: 0xf4cda4, hemiG: 0xd9b894, hemiI: 0.85 },
+    { t: 205, sky: 0x32406e, sunC: 0xaabbe8, sunI: 0.22, elev: 45, hemiS: 0x6a7ab0, hemiG: 0x55495c, hemiI: 0.62 },
+    { t: 240, sky: 0xcfe0f4, sunC: 0xffe2bb, sunI: 0.5,  elev: 20, hemiS: 0xe8f0fa, hemiG: 0xe0cdb0, hemiI: 0.92 },
   ];
 
-  let cA = null, cB = null; // THREE未読込環境でも落ちないよう遅延生成
+  let cA = null, cB = null;
   function lerpColor(a, b, f) {
     if (!cA) { cA = new THREE.Color(); cB = new THREE.Color(); }
     return cA.setHex(a).lerp(cB.setHex(b), f);
   }
 
-  /* 窓明かり: 夜=1 / 昼=0。夕暮れは窓ごとの delay で一つずつ点く */
-  function litFactor(pos, delay) {
-    if (pos >= 170 || pos < 0) return 1;                       // 夜
-    if (pos < 50) {                                            // 朝: 順に消える
-      const pr = pos / 50;
-      return pr > delay ? Math.max(0, 1 - (pr - delay) * 6) : 1;
-    }
-    if (pos < 120) return 0;                                   // 昼
-    const pr = (pos - 120) / 50;                               // 夕: 順に点く
-    return pr > delay ? Math.min(1, (pr - delay) * 6) : 0;
-  }
-
-  function applyCycle() {
-    const pos = (cyclePos / cycleLen) * 240;
+  function keyLerp(pos) {
     let a = KEYS[0], b = KEYS[1];
     for (let i = 0; i < KEYS.length - 1; i++) {
       if (pos >= KEYS[i].t && pos <= KEYS[i + 1].t) { a = KEYS[i]; b = KEYS[i + 1]; break; }
     }
     const f = (pos - a.t) / Math.max(1, b.t - a.t);
+    return { a, b, f };
+  }
 
-    scene.background.copy(lerpColor(a.sky, b.sky, f));
+  /* 窓明かり: 夜=1 / 昼=0。夕暮れは窓ごとの delay で一つずつ点く */
+  function litFactor(pos, delay) {
+    if (pos >= 170 || pos < 0) return 1;
+    if (pos < 50) {
+      const pr = pos / 50;
+      return pr > delay ? Math.max(0, 1 - (pr - delay) * 6) : 1;
+    }
+    if (pos < 120) return 0;
+    const pr = (pos - 120) / 50;
+    return pr > delay ? Math.min(1, (pr - delay) * 6) : 0;
+  }
+
+  /* ---- 太陽角度の離散化（影のチラつき対策・テスト対象） ---- */
+  function quantizeSunPos(pos) {
+    return Math.floor(pos / SHADOW.stepSec) * SHADOW.stepSec;
+  }
+
+  function sunAngleAt(qpos) {
+    const norm = ((qpos % 240) + 240) % 240;
+    const k = keyLerp(norm);
+    const elev = (k.a.elev + (k.b.elev - k.a.elev) * k.f) * Math.PI / 180;
+    const azim = (norm / 240) * Math.PI * 2 - Math.PI * 0.25;
+    return { elev, azim };
+  }
+
+  let shadowQ = -1;
+  let angleFrom = null, angleTo = null, blendStart = 0;
+
+  function updateSunAngle(pos, nowMs) {
+    const q = quantizeSunPos(pos);
+    if (q !== shadowQ) {
+      angleFrom = angleTo || sunAngleAt(q);
+      angleTo = sunAngleAt(q + SHADOW.stepSec / 2); // 区間の中央角で固定
+      shadowQ = q;
+      blendStart = nowMs;
+    }
+    let f = Math.min(1, (nowMs - blendStart) / (SHADOW.blendSec * 1000));
+    f = f * f * (3 - 2 * f); // smoothstep
+    const elev = angleFrom.elev + (angleTo.elev - angleFrom.elev) * f;
+    let dAzim = angleTo.azim - angleFrom.azim;
+    if (Math.abs(dAzim) > Math.PI) dAzim -= Math.sign(dAzim) * Math.PI * 2; // 最短経路
+    const azim = angleFrom.azim + dAzim * f;
+    sun.position.set(Math.cos(azim) * 18, Math.max(2, Math.sin(elev) * 18 + 3), Math.sin(azim) * 18);
+
+    // 夜は太陽影を切る（月影は作らない）。切替は離散更新時のみ起きる
+    const night = pos >= 170;
+    if (sun.castShadow === night) sun.castShadow = !night;
+  }
+
+  function applyCycle(nowMs) {
+    const pos = (cyclePos / cycleLen) * 240;
+    const k = keyLerp(pos);
+
+    scene.background.copy(lerpColor(k.a.sky, k.b.sky, k.f));
     scene.fog.color.copy(scene.background);
-    sun.color.copy(lerpColor(a.sunC, b.sunC, f));
-    sun.intensity = a.sunI + (b.sunI - a.sunI) * f;
-    hemi.color.copy(lerpColor(a.hemiS, b.hemiS, f));
-    hemi.groundColor.copy(lerpColor(a.hemiG, b.hemiG, f));
-    hemi.intensity = a.hemiI + (b.hemiI - a.hemiI) * f;
+    sun.color.copy(lerpColor(k.a.sunC, k.b.sunC, k.f));
+    sun.intensity = k.a.sunI + (k.b.sunI - k.a.sunI) * k.f;
+    hemi.color.copy(lerpColor(k.a.hemiS, k.b.hemiS, k.f));
+    hemi.groundColor.copy(lerpColor(k.a.hemiG, k.b.hemiG, k.f));
+    hemi.intensity = k.a.hemiI + (k.b.hemiI - k.a.hemiI) * k.f;
 
-    const elev = (a.elev + (b.elev - a.elev) * f) * Math.PI / 180;
-    const azim = (pos / 240) * Math.PI * 2 - Math.PI * 0.25;
-    sun.position.set(Math.cos(azim) * 16, Math.sin(elev) * 16 + 4, Math.sin(azim) * 16);
+    updateSunAngle(pos, nowMs);
 
     const night = litFactor(pos, 0);
     lanternLight.intensity = 0.35 + night * 0.95;
@@ -447,7 +543,7 @@
   }
 
   /* ---------- タップ（願い星キャッチ・施設→カード連携） ---------- */
-  let raycaster = null, pointer = null; // THREE未読込環境でも落ちないよう遅延生成
+  let raycaster = null, pointer = null;
 
   function onPointerDown(e) {
     if (!T.ready || !canvas) return;
@@ -455,14 +551,14 @@
     const r = canvas.getBoundingClientRect();
     pointer.x = ((e.clientX - r.left) / r.width) * 2 - 1;
     pointer.y = -((e.clientY - r.top) / r.height) * 2 + 1;
-    raycaster.setFromCamera(pointer, camera);
+    raycaster.setFromCamera(pointer, camera); // Orthographicにも対応
 
     if (wish) {
       const hits = raycaster.intersectObject(wish.group, true);
       if (hits.length > 0) {
         const cb = wish.onCatch;
         removeWish();
-        e.stopPropagation(); // 街タップと二重取りにしない
+        e.stopPropagation();
         if (cb) cb();
         return;
       }
@@ -483,7 +579,6 @@
     const grp = facGroups[id];
     if (grp) bounces.push({ group: grp, t0: Date.now() });
     if (id === 'lights') {
-      // 街灯はグループ管理外なので全体を軽く明滅
       bounces.push({ group: townGroup, t0: Date.now(), soft: true });
     }
   }
@@ -499,14 +594,11 @@
 
   /* ---------- ループ ---------- */
   function animate() {
-    raf = requestAnimationFrame(animate);
-    const t = Date.now() / 1000;
+    requestAnimationFrame(animate);
+    const now = Date.now();
+    const t = now / 1000;
 
-    applyCycle();
-
-    // カメラのごく軽い揺れ（ミニチュアを覗き込む感じ）
-    camera.position.x = Math.sin(t * 0.12) * 0.35;
-    camera.lookAt(0, -0.4, 0);
+    applyCycle(now);
 
     for (const f of flags) {
       f.mesh.rotation.y = Math.sin(t * 4 + f.seed) * 0.3;
@@ -523,7 +615,7 @@
     }
     for (let i = bounces.length - 1; i >= 0; i--) {
       const b = bounces[i];
-      const p = (Date.now() - b.t0) / 600;
+      const p = (now - b.t0) / 600;
       if (p >= 1) {
         b.group.scale.setScalar(1);
         bounces.splice(i, 1);
@@ -535,8 +627,7 @@
       b.group.scale.setScalar(s);
     }
     if (wish) {
-      const age = (Date.now() - wish.t0) / 1000;
-      if (Date.now() > wish.expireAt) {
+      if (now > wish.expireAt) {
         removeWish();
         if (T.onWishExpire) T.onWishExpire();
       } else if (wish.kind === 'star') {
