@@ -66,9 +66,10 @@ button {
 }
 
 /* 発展段階ごとの空 */
+/* 段階1：暗い荒れ地だが、地平線と小屋が読み取れる明度バランスにする */
 #city-view.stage-1 {
   background: linear-gradient(to bottom,
-    #181228 0%, #251a36 45%, #3a2433 75%, #2a1c1a 100%);
+    #232045 0%, #322a55 35%, #45305a 60%, #58394a 76%, #2c2026 90%, #1b1513 100%);
 }
 #city-view.stage-2 {
   background: linear-gradient(to bottom,
@@ -123,7 +124,7 @@ button {
 #layer-mid  .bld { background: #171d3e; }
 #layer-near .bld { background: #0b0f24; }
 #city-view.stage-1 #layer-near .bld,
-#city-view.stage-1 #layer-mid .bld { background: #14101e; }
+#city-view.stage-1 #layer-mid .bld { background: #0e0a19; }
 #city-view.stage-2 #layer-near .bld { background: #100e22; }
 #city-view.stage-2 #layer-mid  .bld { background: #1c1838; }
 
@@ -164,6 +165,15 @@ button {
     0 0 8px 3px rgba(255, 190, 100, 0.9),
     0 0 22px 9px rgba(255, 150, 60, 0.35);
   animation: lanternSway 2.4s ease-in-out infinite;
+}
+
+/* 段階1の主役ランタン：小屋の戸口で大きく灯る */
+.lantern.hero {
+  width: 8px; height: 8px;
+  box-shadow:
+    0 0 14px 6px rgba(255, 205, 120, 0.95),
+    0 0 44px 20px rgba(255, 165, 75, 0.45),
+    0 0 100px 50px rgba(255, 145, 60, 0.16);
 }
 
 /* 光の海（高段階の遠景の小さな灯） */
@@ -285,9 +295,10 @@ button {
   pointer-events: none;
   animation: hintPulse 2.4s ease-in-out infinite;
   white-space: nowrap;
+  transition: opacity 0.9s ease;
 }
 @keyframes hintPulse { 0%, 100% { opacity: 0.85; } 50% { opacity: 0.35; } }
-#tap-hint.hidden { display: none; }
+#tap-hint.hidden { opacity: 0; animation: none; }
 
 /* 共通アニメーション */
 @keyframes flicker {
@@ -459,6 +470,10 @@ button {
   background: rgba(4, 6, 18, 0.78);
   animation: fadeIn 0.25s ease;
 }
+/* hidden属性を確実に効かせる（#modal-overlayのdisplay:flexがUAスタイルの
+   [hidden]{display:none}より優先されてしまい、空のオーバーレイが画面を
+   覆って操作不能になる不具合の修正） */
+#modal-overlay[hidden] { display: none; }
 @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
 
 #modal {
