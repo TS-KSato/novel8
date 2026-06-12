@@ -17,6 +17,7 @@
     <div class="layer" id="layer-far"></div>
     <div class="layer" id="layer-mid"></div>
     <div class="layer" id="layer-near"></div>
+    <div class="layer" id="layer-fac"></div>
     <div id="ground"></div>
     <div id="ambient-lights"></div>
     <div id="market-glow"></div>
@@ -31,20 +32,26 @@
 
   <!-- 資源表示バー -->
   <section id="resource-bar" aria-label="資源表示">
-    <div class="res">
-      <span class="res-label">魔素</span>
-      <span class="res-value" id="res-maso">0</span>
-      <span class="res-rate" id="rate-maso">+0/秒</span>
+    <div id="res-grid">
+      <div class="res">
+        <span class="res-label">魔素</span>
+        <span class="res-value" id="res-maso">0</span>
+        <span class="res-rate" id="rate-maso">+0/秒</span>
+      </div>
+      <div class="res">
+        <span class="res-label">資材</span>
+        <span class="res-value" id="res-shizai">0</span>
+        <span class="res-rate" id="rate-shizai">+0/秒</span>
+      </div>
+      <div class="res">
+        <span class="res-label">発展度</span>
+        <span class="res-value" id="res-dev">0</span>
+        <span class="res-rate" id="res-stage">泥のアジト</span>
+      </div>
     </div>
-    <div class="res">
-      <span class="res-label">資材</span>
-      <span class="res-value" id="res-shizai">0</span>
-      <span class="res-rate" id="rate-shizai">+0/秒</span>
-    </div>
-    <div class="res">
-      <span class="res-label">発展度</span>
-      <span class="res-value" id="res-dev">0</span>
-      <span class="res-rate" id="res-stage">泥のアジト</span>
+    <div id="goal-chip" aria-label="次の目標">
+      <span id="goal-lamp"></span>
+      <span id="goal-text"></span>
     </div>
   </section>
 

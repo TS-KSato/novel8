@@ -17,6 +17,13 @@
     { th: 55, name: '光の都リーザ' },
   ];
 
+  /* 初回起動時の導入（原文のまま） */
+  const INTRO_LINES = [
+    '魔力なしと蔑まれた少年レインと仲間たちは、荒れ地に小さなアジトを築いた。',
+    'あなたは彼らと共に、この地に街を育てる。',
+    'まずは、ランタンの灯を絶やさないこと。',
+  ];
+
   /* ストーリーメッセージ（段階到達時・原文のまま） */
   const STORY = {
     2: 'レイン『……まずは雨風をしのげる場所からだ。少しずつでいい、確かめながら進めよう』',
@@ -61,8 +68,12 @@
     lv: { lantern: 0, market: 0, school: 0, clinic: 0, lights: 0 },
     unlocked: [],   // 解放済みストーリー段階（2〜5）
     maxStage: 1,    // 到達済みの最高段階
+    introSeen: false,
     lastSaved: Date.now(),
   };
+
+  /* 表示用のカウントアップ値（実値に向かって滑らかに増える） */
+  const shown = { maso: 0, shizai: 0 };
 
   /* ---------- 派生値 ---------- */
   const autoBonus = () => 1 + state.lv.clinic * 0.1;
@@ -195,6 +206,109 @@
     }
   }
 
+  /* ------------------------------------------------------------
+     施設シルエット：プレイヤーが建てたものが街の絵として残る。
+     state.lv から決定的に描くため、セーブ復元でも同じ街並みになる。
+     配置は段階1の小屋（38〜62%）を避けた固定位置。
+     ------------------------------------------------------------ */
+
+  function facWindows(b, lv, cap, cls, rng) {
+    const n = Math.min(lv, cap);
+    for (let i = 0; i < n; i++) {
+      const win = document.createElement('span');
+      win.className = 'win' + (cls ? ' ' + cls : '');
+      win.style.left = (14 + (i % 3) * 26 + rng() * 8) + '%';
+      win.style.top = (22 + Math.floor(i / 3) * 22 + rng() * 6) + '%';
+      win.style.animationDuration = (1.8 + rng() * 2.4) + 's';
+      win.style.animationDelay = (-rng() * 3) + 's';
+      b.appendChild(win);
+    }
+  }
+
+  function renderFacilities() {
+    const layer = $('layer-fac');
+    layer.textContent = '';
+    const rng = mulberry32(424242);
+    const lv = state.lv;
+
+    const fac = (id, shape, left, width, height) => {
+      const b = document.createElement('div');
+      b.className = 'bld ' + shape;
+      b.dataset.fac = id;
+      b.style.left = left + '%';
+      b.style.width = width + '%';
+      b.style.height = height + '%';
+      layer.appendChild(b);
+      return b;
+    };
+
+    // ランタン工房：小屋の隣。Lvに応じて灯る窓が増え、背も少し伸びる
+    if (lv.lantern > 0) {
+      const b = fac('lantern', 'shape-step', 64, 14, 13 + Math.min(lv.lantern, 12));
+      facWindows(b, lv.lantern, 9, '', rng);
+    }
+
+    // 市場：屋台が増え、にぎわいの暖色グローが強まる
+    if (lv.market > 0) {
+      const stalls = 1 + Math.min(Math.floor((lv.market - 1) / 2), 4);
+      const glow = document.createElement('div');
+      glow.className = 'stall-glow';
+      glow.dataset.fac = 'market';
+      glow.style.left = '3%';
+      glow.style.width = (stalls * 7 + 5) + '%';
+      glow.style.height = '17%';
+      glow.style.bottom = '8%';
+      glow.style.opacity = Math.min(0.45 + lv.market * 0.05, 1);
+      layer.appendChild(glow);
+      for (let i = 0; i < stalls; i++) {
+        const s = document.createElement('div');
+        s.className = 'stall';
+        s.dataset.fac = 'market';
+        s.style.left = (5 + i * 7) + '%';
+        s.style.width = '5.5%';
+        s.style.height = (7 + Math.min(lv.market, 8) * 0.5) + '%';
+        s.style.bottom = '8%';
+        const w = document.createElement('span');
+        w.className = 'win';
+        w.style.left = '38%';
+        w.style.top = '34%';
+        w.style.animationDuration = (1.4 + rng() * 1.2) + 's';
+        w.style.animationDelay = (-rng() * 2) + 's';
+        s.appendChild(w);
+        layer.appendChild(s);
+      }
+    }
+
+    // 学問所：塔。窓に知的な青白い灯
+    if (lv.school > 0) {
+      const b = fac('school', 'shape-tower', 80, 11, 16 + Math.min(lv.school, 12) * 1.4);
+      facWindows(b, lv.school, 8, 'win-cool', rng);
+    }
+
+    // 救護院：柔らかい白〜緑がかった優しい灯
+    if (lv.clinic > 0) {
+      const b = fac('clinic', 'shape-dome', 29, 13, 11 + Math.min(lv.clinic, 8));
+      facWindows(b, lv.clinic, 6, 'win-soft', rng);
+      const aura = document.createElement('div');
+      aura.className = 'clinic-aura';
+      aura.dataset.fac = 'clinic';
+      aura.style.left = '26%';
+      aura.style.width = '19%';
+      aura.style.height = (16 + Math.min(lv.clinic, 8) * 1.5) + '%';
+      aura.style.bottom = '8%';
+      layer.appendChild(aura);
+    }
+    // 街灯網：renderCity のランタン光点の増加で表現する
+  }
+
+  /* 建設・強化時：対象の建物が光と共に出現/成長する */
+  function animateFacility(id) {
+    document.querySelectorAll('#layer-fac [data-fac="' + id + '"]').forEach(el => {
+      el.classList.add('grow');
+      el.addEventListener('animationend', () => el.classList.remove('grow'), { once: true });
+    });
+  }
+
   function renderCity() {
     const stage = state.maxStage;
     const cfg = CITY_CFG[stage];
@@ -254,6 +368,8 @@
       amb.appendChild(p);
     }
 
+    renderFacilities();
+
     $('stage-no').textContent = '段階 ' + stage;
     $('stage-name').textContent = STAGES[stage - 1].name;
   }
@@ -310,7 +426,24 @@
 
   function showStoryModal(stageNum) {
     if (!STORY[stageNum]) return; // ストーリーが無い段階ではモーダルを出さない
-    openModal('街の記録', storyNode(stageNum, true), '物語を続ける');
+    const wrap = document.createElement('div');
+    wrap.appendChild(storyNode(stageNum, true));
+    const you = document.createElement('div');
+    you.className = 'story-you';
+    you.textContent = 'あなたたちの街は『' + STAGES[stageNum - 1].name + '』になった。';
+    wrap.appendChild(you);
+    openModal('街の記録', wrap, '物語を続ける');
+  }
+
+  function showIntroModal() {
+    const wrap = document.createElement('div');
+    for (const line of INTRO_LINES) {
+      const p = document.createElement('p');
+      p.className = 'intro-line';
+      p.textContent = line;
+      wrap.appendChild(p);
+    }
+    openModal('灯火の街リーザ', wrap, '街づくりを始める');
   }
 
   function showRecordsModal() {
@@ -425,7 +558,15 @@
       }
 
       r.btn.textContent = lv === 0 ? '建設' : '強化';
-      r.btn.disabled = !(okMaso && okShizai);
+      const afford = okMaso && okShizai;
+      // 建設可能になった瞬間、ボタンをわずかに明滅させて気づかせる
+      if (afford && r.wasAfford === false) {
+        r.btn.classList.add('ping');
+        clearTimeout(r.pingTimer);
+        r.pingTimer = setTimeout(() => r.btn.classList.remove('ping'), 1900);
+      }
+      r.wasAfford = afford;
+      r.btn.disabled = !afford;
     }
   }
 
@@ -437,7 +578,12 @@
     state.shizai -= c.shizai;
     state.lv[id]++;
     tapHint.classList.add('hidden');
-    if (id === 'lights') renderCity(); // 街灯網は光の本数に即反映
+    if (id === 'lights') {
+      renderCity(); // 街灯網は光の本数に即反映
+    } else {
+      renderFacilities();
+      animateFacility(id); // 建物が光と共に出現/成長する
+    }
     checkStage();
     updateAll();
     save();
@@ -464,10 +610,17 @@
      タップ
      ============================================================ */
 
+  let pulseTimer = 0;
+
   cityEl.addEventListener('pointerdown', e => {
     const g = tapGain();
     state.maso += g;
     tapHint.classList.add('hidden'); // 一度でも獲得したら誘導をフェードアウト
+
+    // 街の灯が一瞬強く脈動する
+    cityEl.classList.add('lantern-pulse');
+    clearTimeout(pulseTimer);
+    pulseTimer = setTimeout(() => cityEl.classList.remove('lantern-pulse'), 170);
 
     const rect = cityEl.getBoundingClientRect();
     const x = e.clientX - rect.left;
@@ -486,6 +639,21 @@
     num.style.top = y + 'px';
     tapLayer.appendChild(num);
 
+    // 小さな光の粒が1〜3個ふわっと舞い上がる（同時表示数を制限）
+    if (tapLayer.querySelectorAll('.spark').length < 18) {
+      const n = 1 + Math.floor(Math.random() * 3);
+      for (let i = 0; i < n; i++) {
+        const sp = document.createElement('span');
+        sp.className = 'spark';
+        sp.style.left = (x + (Math.random() * 30 - 15)) + 'px';
+        sp.style.top = (y + (Math.random() * 12 - 6)) + 'px';
+        sp.style.setProperty('--dx', (Math.random() * 56 - 28).toFixed(0) + 'px');
+        sp.style.animationDuration = (0.8 + Math.random() * 0.6) + 's';
+        tapLayer.appendChild(sp);
+        setTimeout(() => sp.remove(), 1500);
+      }
+    }
+
     setTimeout(() => { glow.remove(); num.remove(); }, 850);
     if (tapLayer.childElementCount > 40) tapLayer.firstElementChild.remove();
 
@@ -496,9 +664,46 @@
      表示更新・メインループ
      ============================================================ */
 
+  /* 表示値を実値に向かってカウントアップさせる（消費時は即時反映） */
+  function easeShown() {
+    for (const k of ['maso', 'shizai']) {
+      const real = state[k];
+      if (real < shown[k]) { shown[k] = real; continue; }
+      const diff = real - shown[k];
+      shown[k] = diff < 1 ? real : shown[k] + diff * 0.25;
+    }
+  }
+
+  /* 次の目標を現在の状況から自動判定する */
+  function currentGoal() {
+    if (state.lv.lantern === 0) return 'ランタン工房を建てよう';
+    if (state.lv.market === 0) return '市場を建てよう';
+    if (state.maxStage >= 2 && state.lv.school === 0) return '学問所を建てよう（資材が必要）';
+    if (state.maxStage >= 3 && state.lv.clinic === 0) return '救護院を建てよう';
+    if (state.maxStage >= 3 && state.lv.lights === 0) return '街灯網を整備しよう';
+    if (state.maxStage < 5) {
+      const next = STAGES[state.maxStage];
+      const rest = Math.max(0, next.th - devPoints());
+      return '発展度' + next.th + 'で『' + next.name + '』になる（あと' + rest + '）';
+    }
+    return '光の海を、さらに広げよう';
+  }
+
+  let lastGoal = '';
+  function updateGoal() {
+    const g = currentGoal();
+    if (g === lastGoal) return;
+    lastGoal = g;
+    $('goal-text').textContent = g;
+    const chip = $('goal-chip');
+    chip.classList.remove('changed');
+    void chip.offsetWidth;
+    chip.classList.add('changed');
+  }
+
   function updateResources() {
-    $('res-maso').textContent = fmt(state.maso);
-    $('res-shizai').textContent = fmt(state.shizai);
+    $('res-maso').textContent = fmt(shown.maso);
+    $('res-shizai').textContent = fmt(shown.shizai);
     $('rate-maso').textContent = '+' + trim1(masoPerSec()) + '/秒';
     $('rate-shizai').textContent = '+' + trim1(shizaiPerSec()) + '/秒';
     $('res-dev').textContent = fmt(devPoints());
@@ -506,8 +711,10 @@
   }
 
   function updateAll() {
+    easeShown();
     updateResources();
     updateFacilityList();
+    updateGoal();
   }
 
   let lastTick = Date.now();
@@ -540,6 +747,7 @@
         lv: state.lv,
         unlocked: state.unlocked,
         maxStage: state.maxStage,
+        introSeen: state.introSeen,
         lastSaved: state.lastSaved,
       }));
     } catch (e) { /* プライベートモード等で保存できない場合は無視 */ }
@@ -548,9 +756,9 @@
   function load() {
     try {
       const raw = localStorage.getItem(SAVE_KEY);
-      if (!raw) return;
+      if (!raw) return false;
       const d = JSON.parse(raw);
-      if (!d || d.v !== 1) return;
+      if (!d || d.v !== 1) return false;
       state.maso = Number(d.maso) || 0;
       state.shizai = Number(d.shizai) || 0;
       for (const k of Object.keys(state.lv)) {
@@ -560,6 +768,7 @@
         ? d.unlocked.filter(n => n >= 2 && n <= 5)
         : [];
       state.maxStage = Math.min(5, Math.max(1, Math.floor(Number(d.maxStage) || 1)));
+      state.introSeen = d.introSeen !== false; // 既存セーブは導入を再表示しない
       state.lastSaved = Number(d.lastSaved) || Date.now();
       // 整合性：保存時より発展度が高ければ静かに段階を合わせる
       const s = stageFor(devPoints());
@@ -569,7 +778,9 @@
         }
         state.maxStage = s;
       }
+      return true;
     } catch (e) { /* 壊れたデータは無視して新規開始 */ }
+    return false;
   }
 
   /* ============================================================
@@ -607,12 +818,19 @@
      起動
      ============================================================ */
 
-  load();
+  const hadSave = load();
+  shown.maso = state.maso;
+  shown.shizai = state.shizai;
   buildFacilityList();
   renderCity();
   updateAll();
   if (state.maso > 0 || Object.values(state.lv).some(v => v > 0)) {
     tapHint.classList.add('hidden');
+  }
+  if (!hadSave && !state.introSeen) {
+    state.introSeen = true;
+    showIntroModal();
+    save();
   }
 
   setInterval(tick, 100);
