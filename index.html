@@ -11,9 +11,19 @@
 <div id="app">
 
   <!-- 街ビュー -->
-  <header id="city-view" class="stage-1" aria-label="街ビュー（タップでひかりを獲得）">
+  <header id="city-view" class="stage-1 t-night" aria-label="街ビュー（タップでひかりを獲得）">
     <div id="stars"></div>
     <div id="moon"></div>
+    <div id="sky-tints">
+      <div class="tint tint-morning"></div>
+      <div class="tint tint-day"></div>
+      <div class="tint tint-dusk"></div>
+    </div>
+    <div id="clouds">
+      <span class="cloud c1"></span>
+      <span class="cloud c2"></span>
+      <span class="cloud c3"></span>
+    </div>
     <div class="layer" id="layer-far"></div>
     <div class="layer" id="layer-mid"></div>
     <div class="layer" id="layer-near"></div>
@@ -23,6 +33,7 @@
     <div id="ambient-lights"></div>
     <div id="market-glow"></div>
     <div id="wave"></div>
+    <div id="wish-layer"></div>
     <div id="tap-layer"></div>
     <div id="stage-banner">
       <span id="stage-no">段階 1</span>
@@ -67,7 +78,7 @@
   <nav id="footer-menu" aria-label="メニュー">
     <button type="button" class="tab active" data-tab="city">街</button>
     <button type="button" class="tab" data-tab="facility">しせつ</button>
-    <button type="button" class="tab" data-tab="records">きろく</button>
+    <button type="button" class="tab" data-tab="records">ずかん</button>
     <button type="button" class="tab" data-tab="settings">せってい</button>
   </nav>
 
