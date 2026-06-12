@@ -1391,7 +1391,12 @@ rt { font-size: 0.55em; opacity: 0.8; letter-spacing: 0; }
   100% { box-shadow: 0 0 0 0 rgba(240, 150, 46, 0), 0 3px 10px rgba(30, 18, 8, 0.35); }
 }
 
-/* Three.js使用時はDOMの空・旧演出を消す（シーンが空も描く） */
-#city-view.gl #stars, #city-view.gl #moon, #city-view.gl #sky-tints,
-#city-view.gl #clouds, #city-view.gl #ground, #city-view.gl #market-glow,
+/* Three.js使用時:
+   - 空（グラデーション・ティント・雲・星・月）はCSSがそのまま描く
+     （GLキャンバスは透過。盤面だけを3Dが描く）
+   - 旧描画専用の要素のみ消す
+   - エフェクト・UI層はキャンバス(z-index:2)より手前に */
+#city-view.gl #ground, #city-view.gl #market-glow,
 #city-view.gl #diorama { display: none; }
+#city-view.gl #wave, #city-view.gl #wish-layer, #city-view.gl #tap-layer,
+#city-view.gl #stage-banner, #city-view.gl #tap-hint { z-index: 3; }

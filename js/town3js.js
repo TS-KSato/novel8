@@ -17,13 +17,14 @@
 
   /* ---------- 調整用定数 ---------- */
 
-  /* カメラ（アイソメ風・平行投影） */
+  /* カメラ（アイソメ風・平行投影）
+     俯瞰35度: 台座の側面が見え、建物の正面壁が主役になる構図 */
   const CAM = {
-    elevDeg: 52,     // 俯瞰角（50〜55度）
-    azimDeg: 45,     // 方位角（盤面の角が手前に来るダイヤモンド配置）
-    viewHeight: 14,  // 縦に収めるワールド単位（ズーム。小さいほど寄る）
-    dist: 28,        // カメラ距離（平行投影では構図に影響しない）
-    lookAtY: 0.3,
+    elevDeg: 35,      // 俯瞰角
+    azimDeg: 45,      // 方位角（盤面の角が手前に来るダイヤモンド配置）
+    viewHeight: 13.6, // 縦に収めるワールド単位（ズーム。小さいほど寄る）
+    dist: 28,         // カメラ距離（平行投影では構図に影響しない）
+    lookAtY: 0.8,
   };
 
   /* 影（チラつき対策の核心） */
@@ -95,7 +96,9 @@
       renderer = new THREE.WebGLRenderer({
         antialias: (window.devicePixelRatio || 1) < 2,
         powerPreference: 'low-power',
+        alpha: true, // 背景は透過し、CSSの空グラデーション+雲+星を生かす
       });
+      renderer.setClearColor(0x000000, 0);
       renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));
       renderer.shadowMap.enabled = true;
       renderer.shadowMap.type = THREE.PCFSoftShadowMap;
@@ -107,11 +110,11 @@
       canvas.id = 'gl-canvas';
       canvas.style.position = 'absolute';
       canvas.style.inset = '0';
+      canvas.style.zIndex = '2'; // CSSの空（tints/clouds/stars）より手前
       host.insertBefore(canvas, host.firstChild);
 
-      scene = new THREE.Scene();
-      scene.background = new THREE.Color(0x32406e);
-      scene.fog = new THREE.Fog(0x32406e, 30, 60);
+      scene = new THREE.Scene(); // 背景は透過（空はCSSが描く）
+      scene.fog = new THREE.Fog(0xcfe0f4, 34, 70); // ごく薄い距離霞のみ
 
       /* アイソメ風の平行投影カメラ */
       camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 80);
@@ -258,34 +261,49 @@
     base.receiveShadow = true;
     townGroup.add(base);
 
-    const groundColors = [0, P.ground1, P.ground2, P.ground3, P.ground4, P.ground5];
-    const top = new THREE.Mesh(geos().box, matOf(groundColors[model.stage] || P.ground1));
+    /* 地面ベース＝しっかりした明るい草色（画面の50-60%を占める基調色） */
+    const top = new THREE.Mesh(geos().box, matOf(P.grass));
     top.scale.set(S, 0.1, S);
     top.position.y = 0.0;
     top.receiveShadow = true;
     townGroup.add(top);
 
-    /* 緑地：のっぺりした円ではなく、低い丘状にして馴染ませる */
+    /* 土の区画（クリームベージュ）と草の丘で地面に構造を与える */
     const rngP = (s => () => (s = (s * 16807) % 2147483647) / 2147483647)(model.stage * 99 + 7);
     for (let i = 0; i < model.mounds; i++) {
-      const mound = new THREE.Mesh(geos().sphere, matOf(i % 2 === 0 ? P.grass : P.grassDark));
+      const isDirt = i % 3 === 2;
+      const mound = new THREE.Mesh(geos().sphere,
+        matOf(isDirt ? P.dirt : (i % 2 === 0 ? P.grassLight : P.grassDark)));
       const pr = 0.9 + rngP() * 1.2;
-      mound.scale.set(pr * 2, 0.28, pr * 2);
+      mound.scale.set(pr * 2, isDirt ? 0.12 : 0.28, pr * 2);
       mound.position.set((rngP() - 0.5) * (S - 3), 0.02, (rngP() - 0.5) * (S - 3));
       mound.receiveShadow = true;
       mound.castShadow = false;
       townGroup.add(mound);
     }
 
-    /* 道と広場 */
-    const roadColor = model.stage >= 3 ? P.road : P.roadEarly;
+    /* 道＝一段明るいクリーム石畳 + 茶の縁石（アクセント） */
     for (const r of model.roads) {
-      const road = new THREE.Mesh(geos().box, matOf(roadColor));
+      const road = new THREE.Mesh(geos().box, matOf(P.road));
       road.scale.set(r.w, 0.06, r.l);
       road.position.set(r.x, 0.09, r.z);
       road.receiveShadow = true;
       road.castShadow = false;
       townGroup.add(road);
+      // 縁石（道の両側に細い茶のライン）
+      for (const side of [-1, 1]) {
+        const curb = new THREE.Mesh(geos().box, matOf(P.roadEdge));
+        if (r.dir === 'ns') {
+          curb.scale.set(0.12, 0.1, r.l);
+          curb.position.set(r.x + side * (r.w / 2 + 0.06), 0.1, r.z);
+        } else {
+          curb.scale.set(r.w, 0.1, 0.12);
+          curb.position.set(r.x, 0.1, r.z + side * (r.l / 2 + 0.06));
+        }
+        curb.castShadow = false;
+        curb.receiveShadow = true;
+        townGroup.add(curb);
+      }
     }
     const plaza = new THREE.Mesh(geos().disc, matOf(P.plaza));
     plaza.scale.set(model.plaza.r * 2, 1, model.plaza.r * 2);
@@ -408,13 +426,15 @@
   }
 
   /* パステル調の昼夜キーフレーム（空・太陽・半球光） */
+  /* 「常時、色がきれい」を最優先（リアルな色温度より優先）。
+     朝・夕も地面の緑が灰色に濁らないよう、半球光は白寄り・高めの明度を保つ */
   const KEYS = [
-    // t(秒), 空, 太陽色, 太陽強さ, 仰角(deg), 半球光(空/地/強さ)
-    { t: 0,   sky: 0xcfe0f4, sunC: 0xffe2bb, sunI: 0.5,  elev: 20, hemiS: 0xe8f0fa, hemiG: 0xe0cdb0, hemiI: 0.92 },
-    { t: 85,  sky: 0xb5d9f7, sunC: 0xfff2dd, sunI: 0.62, elev: 60, hemiS: 0xf2f7fc, hemiG: 0xe6d6b8, hemiI: 1.08 },
-    { t: 145, sky: 0xf0b88c, sunC: 0xffb070, sunI: 0.5,  elev: 14, hemiS: 0xf4cda4, hemiG: 0xd9b894, hemiI: 0.85 },
-    { t: 205, sky: 0x32406e, sunC: 0xaabbe8, sunI: 0.22, elev: 45, hemiS: 0x6a7ab0, hemiG: 0x55495c, hemiI: 0.62 },
-    { t: 240, sky: 0xcfe0f4, sunC: 0xffe2bb, sunI: 0.5,  elev: 20, hemiS: 0xe8f0fa, hemiG: 0xe0cdb0, hemiI: 0.92 },
+    // t(秒), 霞色, 太陽色, 太陽強さ, 仰角(deg), 半球光(空/地/強さ)
+    { t: 0,   sky: 0xdfe9f6, sunC: 0xffe6c2, sunI: 0.48, elev: 22, hemiS: 0xf0f5fb, hemiG: 0xe8d8ba, hemiI: 0.98 },
+    { t: 85,  sky: 0xd5e7f8, sunC: 0xfff4e2, sunI: 0.6,  elev: 60, hemiS: 0xf6fafd, hemiG: 0xecdcc0, hemiI: 1.1 },
+    { t: 145, sky: 0xf6cfa6, sunC: 0xffb878, sunI: 0.5,  elev: 16, hemiS: 0xf8dcb8, hemiG: 0xe2c49e, hemiI: 0.95 },
+    { t: 205, sky: 0x4a5a94, sunC: 0xb4c4ee, sunI: 0.24, elev: 45, hemiS: 0x8290c4, hemiG: 0x5e5468, hemiI: 0.7 },
+    { t: 240, sky: 0xdfe9f6, sunC: 0xffe6c2, sunI: 0.48, elev: 22, hemiS: 0xf0f5fb, hemiG: 0xe8d8ba, hemiI: 0.98 },
   ];
 
   let cA = null, cB = null;
@@ -485,8 +505,7 @@
     const pos = (cyclePos / cycleLen) * 240;
     const k = keyLerp(pos);
 
-    scene.background.copy(lerpColor(k.a.sky, k.b.sky, k.f));
-    scene.fog.color.copy(scene.background);
+    scene.fog.color.copy(lerpColor(k.a.sky, k.b.sky, k.f));
     sun.color.copy(lerpColor(k.a.sunC, k.b.sunC, k.f));
     sun.intensity = k.a.sunI + (k.b.sunI - k.a.sunI) * k.f;
     hemi.color.copy(lerpColor(k.a.hemiS, k.b.hemiS, k.f));
