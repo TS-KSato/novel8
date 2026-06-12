@@ -8,10 +8,13 @@
   --bg-deep: #0a0e22;
   --bg-panel: #121833;
   --bg-card: #161d3b;
-  --line: rgba(255, 178, 90, 0.16);
-  --amber: #ffb24d;
-  --amber-bright: #ffd58a;
-  --orange: #ff8c3a;
+  --line: rgba(255, 192, 110, 0.20);
+  --amber: #ffbe62;
+  --amber-bright: #ffdf9e; /* 蜂蜜色 */
+  --orange: #ff9a45;       /* こはく色 */
+  --c-rein: #6aa8ff;
+  --c-baruto: #ff9a4d;
+  --c-aruno: #d8dce8;
   --text: #e8e6f0;
   --text-dim: #aba7c9;
   --danger: #ef6e6e;
@@ -50,6 +53,10 @@ button {
   cursor: pointer;
   border: none;
 }
+
+/* ふりがな（ルビ） */
+ruby { ruby-position: over; }
+rt { font-size: 0.55em; opacity: 0.8; letter-spacing: 0; }
 
 /* ============================================================
    街ビュー
@@ -233,6 +240,17 @@ button {
     0 0 100px 50px rgba(255, 145, 60, 0.16);
 }
 
+/* 住人の灯：人が増えるほど、窓明かりが増える */
+#resident-lights { position: absolute; inset: 0; pointer-events: none; }
+.res-light {
+  position: absolute;
+  width: 3px; height: 3px;
+  border-radius: 1px;
+  background: #ffd9a0;
+  box-shadow: 0 0 6px 2px rgba(255, 195, 115, 0.65);
+  animation: flicker 3s ease-in-out infinite;
+}
+
 /* 光の海（高段階の遠景の小さな灯） */
 .sea-light {
   position: absolute;
@@ -359,6 +377,7 @@ button {
 }
 #stage-no { font-size: 10px; color: var(--text-dim); letter-spacing: 1px; }
 #stage-name { font-size: 14px; font-weight: bold; color: var(--amber-bright); }
+#stage-glow { font-size: 10px; color: var(--amber); margin-top: 1px; }
 
 #tap-hint {
   position: absolute;
@@ -494,8 +513,8 @@ button {
   gap: 10px;
   background: linear-gradient(135deg, var(--bg-card), #121736);
   border: 1px solid var(--line);
-  border-radius: 14px;
-  padding: 12px;
+  border-radius: 20px;
+  padding: 12px 13px;
   box-shadow: 0 2px 10px rgba(0, 0, 0, 0.35);
 }
 .card-info { flex: 1; min-width: 0; }
@@ -514,25 +533,31 @@ button {
   border-radius: 6px;
   padding: 1px 6px;
 }
-.card-effect { font-size: 11px; color: var(--text-dim); margin-top: 4px; line-height: 1.5; }
-.card-cost { font-size: 11px; margin-top: 3px; color: var(--text-dim); }
+.card-effect { font-size: 11px; color: var(--text-dim); margin-top: 4px; line-height: 1.7; }
+.card-stat { font-size: 11px; color: var(--amber-bright); margin-top: 3px; }
+.card-cost { font-size: 11px; margin-top: 2px; color: var(--text-dim); }
 .card-cost .ok { color: #8fd48f; }
 .card-cost .ng { color: var(--danger); }
 
+/* 担当キャラのチップ（キャラ色） */
+.card-char.chip-rein { color: var(--c-rein); }
+.card-char.chip-baruto { color: var(--c-baruto); }
+.card-char.chip-aruno { color: var(--c-aruno); }
+
 .buy-btn {
-  min-width: 64px;
+  min-width: 66px;
   min-height: 48px;
   padding: 6px 10px;
-  border-radius: 12px;
+  border-radius: 16px;
   font-size: 13px;
   font-weight: bold;
-  color: #2a1804;
-  background: linear-gradient(to bottom, var(--amber-bright), var(--orange));
-  box-shadow: 0 2px 8px rgba(255, 150, 60, 0.35);
-  transition: transform 0.08s ease, opacity 0.2s ease;
+  color: #3a2304;
+  background: linear-gradient(to bottom, #ffe7ae, var(--orange));
+  box-shadow: 0 2px 10px rgba(255, 160, 70, 0.4);
+  transition: transform 0.12s cubic-bezier(0.34, 1.8, 0.5, 1), opacity 0.2s ease;
   flex-shrink: 0;
 }
-.buy-btn:active { transform: scale(0.94); }
+.buy-btn:active { transform: scale(0.88); } /* ぷにっと縮む */
 .buy-btn:disabled {
   background: #2e345c;
   color: #9aa0c4; /* グレーアウト時も読める明度を確保 */
@@ -693,3 +718,272 @@ button {
 @media (max-height: 640px) {
   #city-view { height: 38dvh; min-height: 200px; }
 }
+
+/* ============================================================
+   トースト（仲間の声・住人のお知らせ）
+   ============================================================ */
+
+#toast-area {
+  position: fixed;
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: calc(66px + env(safe-area-inset-bottom));
+  width: min(92vw, 420px);
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  pointer-events: none;
+}
+.toast {
+  pointer-events: auto;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  background: rgba(18, 23, 50, 0.96);
+  border: 1.5px solid var(--line);
+  border-radius: 18px;
+  padding: 9px 14px;
+  font-size: 12px;
+  line-height: 1.7;
+  color: var(--text);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.45);
+  animation: toastIn 0.3s cubic-bezier(0.34, 1.4, 0.5, 1);
+}
+.toast.out { animation: toastOut 0.32s ease forwards; }
+@keyframes toastIn {
+  from { transform: translateY(14px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+@keyframes toastOut {
+  to { transform: translateY(8px); opacity: 0; }
+}
+.toast.info { border-color: rgba(255, 192, 110, 0.45); }
+
+/* 吹き出し：角丸＋キャラ色の縁取り。顔は描かず紋章で表現 */
+.toast.voice .emblem {
+  width: 28px; height: 28px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  flex-shrink: 0;
+  background: rgba(255, 255, 255, 0.06);
+}
+.toast.voice .voice-body { display: flex; flex-direction: column; min-width: 0; }
+.toast.voice .voice-name { font-size: 10px; font-weight: bold; letter-spacing: 1px; }
+.toast.v-rein   { border-color: rgba(106, 168, 255, 0.65); }
+.toast.v-rein   .emblem { border: 1.5px solid var(--c-rein); }
+.toast.v-rein   .voice-name { color: var(--c-rein); }
+.toast.v-baruto { border-color: rgba(255, 154, 77, 0.65); }
+.toast.v-baruto .emblem { border: 1.5px solid var(--c-baruto); }
+.toast.v-baruto .voice-name { color: var(--c-baruto); }
+.toast.v-aruno  { border-color: rgba(216, 220, 232, 0.55); }
+.toast.v-aruno  .emblem { border: 1.5px solid var(--c-aruno); }
+.toast.v-aruno  .voice-name { color: var(--c-aruno); }
+
+/* ============================================================
+   祝祭演出（段階アップ：おめでとう!）
+   ============================================================ */
+
+#celebration {
+  position: fixed;
+  inset: 0;
+  z-index: 45;
+  pointer-events: none;
+  overflow: hidden;
+}
+#celebration[hidden] { display: none; }
+#cel-title {
+  position: absolute;
+  left: 50%; top: 26%;
+  transform: translate(-50%, -50%);
+  font-size: 30px;
+  font-weight: bold;
+  color: var(--amber-bright);
+  text-shadow: 0 0 18px rgba(255, 190, 100, 0.9), 0 2px 4px rgba(0, 0, 0, 0.4);
+  animation: celTitle 1.6s cubic-bezier(0.34, 1.5, 0.5, 1) forwards;
+  white-space: nowrap;
+}
+@keyframes celTitle {
+  0% { transform: translate(-50%, -50%) scale(0.4); opacity: 0; }
+  20% { transform: translate(-50%, -50%) scale(1.08); opacity: 1; }
+  30% { transform: translate(-50%, -50%) scale(1); }
+  80% { opacity: 1; }
+  100% { transform: translate(-50%, -62%); opacity: 0; }
+}
+.cel-spark {
+  position: absolute;
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: var(--amber-bright);
+  box-shadow: 0 0 10px 4px rgba(255, 190, 100, 0.8);
+  animation: celRise 1.3s ease-out forwards;
+  opacity: 0;
+}
+@keyframes celRise {
+  0% { transform: translateY(0) scale(1); opacity: 1; }
+  100% { transform: translateY(-46vh) scale(0.4); opacity: 0; }
+}
+.cheer {
+  position: absolute;
+  font-size: 14px;
+  font-weight: bold;
+  color: #fff;
+  text-shadow: 0 0 10px rgba(255, 200, 120, 0.9);
+  animation: cheerFloat 1.5s ease-out forwards;
+  opacity: 0;
+}
+@keyframes cheerFloat {
+  0% { transform: translateY(10px) scale(0.8); opacity: 0; }
+  25% { opacity: 1; }
+  100% { transform: translateY(-34px) scale(1.05); opacity: 0; }
+}
+
+/* ============================================================
+   オープニング「約束」
+   ============================================================ */
+
+#opening {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 28px;
+  background: radial-gradient(ellipse at 50% 62%,
+    #1a1430 0%, #110d24 45%, #0a0817 100%);
+  cursor: pointer;
+  user-select: none;
+}
+#opening[hidden] { display: none; }
+
+#op-skip {
+  position: absolute;
+  top: calc(10px + env(safe-area-inset-top));
+  right: 12px;
+  min-height: 44px;
+  padding: 8px 16px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.07);
+  color: var(--text-dim);
+  font-size: 12px;
+}
+
+#op-stage { position: relative; width: 180px; height: 180px; margin-bottom: 28px; }
+
+#op-lantern {
+  position: absolute;
+  left: 50%; top: 50%;
+  width: 12px; height: 14px;
+  transform: translate(-50%, -50%);
+  border-radius: 5px;
+  background: var(--amber-bright);
+  box-shadow:
+    0 0 14px 6px rgba(255, 205, 120, 0.9),
+    0 0 44px 20px rgba(255, 165, 75, 0.4),
+    0 0 100px 50px rgba(255, 145, 60, 0.14);
+  animation: lanternSway 2.6s ease-in-out infinite;
+}
+/* 2枚目：灯がやさしく、おおきく揺れる */
+#opening.scene-2 #op-lantern,
+#opening.scene-3 #op-lantern,
+#opening.scene-4 #op-lantern {
+  animation: opLanternWarm 2.2s ease-in-out infinite;
+}
+@keyframes opLanternWarm {
+  0%, 100% { transform: translate(-50%, -50%) scale(1); opacity: 1; }
+  50% { transform: translate(-50%, -52%) scale(1.18); opacity: 0.85; }
+}
+
+/* 3枚目：4つの小さな光（仲間の気配）が集まってくる */
+.op-friend {
+  position: absolute;
+  width: 7px; height: 7px;
+  border-radius: 50%;
+  background: #ffe9c0;
+  box-shadow: 0 0 10px 4px rgba(255, 210, 140, 0.7);
+  opacity: 0;
+}
+#opening.scene-3 .op-friend,
+#opening.scene-4 .op-friend { animation: friendGather 2.4s ease-out forwards; }
+.op-friend.f1 { left: 8%;  top: 16%; }
+.op-friend.f2 { left: 86%; top: 24%; animation-delay: 0.25s !important; }
+.op-friend.f3 { left: 12%; top: 78%; animation-delay: 0.5s !important; }
+.op-friend.f4 { left: 82%; top: 72%; animation-delay: 0.75s !important; }
+@keyframes friendGather {
+  0% { opacity: 0; transform: translate(0, 0) scale(0.6); }
+  30% { opacity: 1; }
+  100% {
+    opacity: 1;
+    transform: translate(calc((90px - 100%) * 0.45), calc((90px - 100%) * 0.45)) scale(1);
+  }
+}
+
+#op-text {
+  max-width: 320px;
+  min-height: 4.2em;
+  font-size: 15px;
+  line-height: 2.1;
+  text-align: center;
+  color: var(--text);
+  animation: fadeIn 0.8s ease;
+}
+#op-next-hint {
+  margin-top: 18px;
+  font-size: 11px;
+  color: var(--text-dim);
+  animation: hintPulse 2.4s ease-in-out infinite;
+}
+#op-start {
+  min-width: 180px;
+  min-height: 54px;
+  border-radius: 999px;
+  font-size: 17px;
+  font-weight: bold;
+  color: #3a2304;
+  background: linear-gradient(to bottom, #ffe7ae, var(--orange));
+  box-shadow: 0 0 24px rgba(255, 170, 80, 0.45);
+  transition: transform 0.12s cubic-bezier(0.34, 1.8, 0.5, 1);
+  animation: fadeIn 0.8s ease;
+}
+#op-start:active { transform: scale(0.9); }
+
+/* はじめる→画面が暖かく明転して、街へ */
+#op-flash {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: radial-gradient(ellipse at 50% 60%,
+    rgba(255, 222, 160, 0.95), rgba(255, 190, 110, 0.75) 45%, rgba(255, 170, 90, 0.4) 100%);
+  opacity: 0;
+}
+#opening.depart { animation: opDepart 0.95s ease forwards; }
+#opening.depart #op-flash { animation: opFlash 0.95s ease forwards; }
+@keyframes opFlash {
+  0% { opacity: 0; }
+  40% { opacity: 1; }
+  100% { opacity: 1; }
+}
+@keyframes opDepart {
+  0% { opacity: 1; }
+  55% { opacity: 1; }
+  100% { opacity: 0; }
+}
+
+/* きろく内の「やくそくを もういちど見る」 */
+.replay-btn {
+  width: 100%;
+  min-height: 46px;
+  margin-bottom: 12px;
+  border-radius: 14px;
+  background: rgba(255, 192, 110, 0.12);
+  border: 1px solid rgba(255, 192, 110, 0.4);
+  color: var(--amber-bright);
+  font-size: 13px;
+  font-weight: bold;
+}
+.replay-btn:active { transform: scale(0.96); }

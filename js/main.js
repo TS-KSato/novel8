@@ -1,12 +1,38 @@
 /* ============================================================
    灯火の街リーザ — ゲームロジック
    素のJavaScriptのみ。外部ライブラリ・外部通信なし。
+
+   体験の核：
+   「ちいさな灯をまもる約束が、いつのまにか、
+     たくさんの人の笑顔になっていた」
    ============================================================ */
 (() => {
   'use strict';
 
   const SAVE_KEY = 'toukaLizaSave_v1';
   const COST_RATE = 1.6;
+
+  /* ---------- ふりがな（ルビ）ヘルパー ----------
+     「｛漢字|よみ｝」記法を <ruby> 要素にして返す。
+     rt要素を除いたテキストは原文と完全に一致する。 */
+  function rubyText(str) {
+    const frag = document.createDocumentFragment();
+    const re = /｛([^|｝]+)\|([^｝]+)｝/g;
+    let last = 0, m;
+    while ((m = re.exec(str))) {
+      if (m.index > last) frag.appendChild(document.createTextNode(str.slice(last, m.index)));
+      const r = document.createElement('ruby');
+      r.appendChild(document.createTextNode(m[1]));
+      const rt = document.createElement('rt');
+      rt.textContent = m[2];
+      r.appendChild(rt);
+      frag.appendChild(r);
+      last = re.lastIndex;
+    }
+    if (last < str.length) frag.appendChild(document.createTextNode(str.slice(last)));
+    return frag;
+  }
+  const rubyInto = (el, str) => { el.textContent = ''; el.appendChild(rubyText(str)); };
 
   /* ---------- 発展段階 ---------- */
   const STAGES = [
@@ -17,48 +43,105 @@
     { th: 55, name: '光の都リーザ' },
   ];
 
-  /* 初回起動時の導入（原文のまま） */
-  const INTRO_LINES = [
-    '魔力なしと蔑まれた少年レインと仲間たちは、荒れ地に小さなアジトを築いた。',
-    'あなたは彼らと共に、この地に街を育てる。',
-    'まずは、ランタンの灯を絶やさないこと。',
+  /* オープニング「約束」（タップで進む4枚） */
+  const OPENING_LINES = [
+    'むかし、ここには なにもなかった。あったのは、ちいさなランタン ひとつだけ。',
+    'これは、たいせつな友だちが のこしてくれた灯。『この灯を、いつか 街いっぱいの光にしてね』',
+    'レインたちは ｛約束|やくそく｝した。きみも、いっしょに 来てくれる?',
   ];
+  const FIRST_GOAL_TOAST = 'まずは ランタンの灯に ひかりを集めよう（街をタップ!）';
 
-  /* ストーリーメッセージ（段階到達時・原文のまま） */
+  /* ストーリーメッセージ（段階到達時・原文のまま、ふりがな付き） */
   const STORY = {
-    2: 'レイン『……まずは雨風をしのげる場所からだ。少しずつでいい、確かめながら進めよう』',
-    3: 'バルト『見ろよ、灯りが増えてきた。人が集まる所には商いが生まれる。ここからが本番だぜ』',
-    4: 'アルノ『記録した数字は嘘をつきません。この街は、確かに育っています』',
-    5: '夜の帳が下りる瞬間、街灯網が波打つように一斉に灯った。かつてたった一つのランタンだった光が、いま、街全体を照らしている。爽やかな風が、街を吹き抜けていった。',
+    2: 'レイン『……まずは｛雨風|あめかぜ｝をしのげる｛場所|ばしょ｝からだ。｛少|すこ｝しずつでいい、｛確|たし｝かめながら｛進|すす｝めよう』',
+    3: 'バルト『｛見|み｝ろよ、｛灯|あか｝りが｛増|ふ｝えてきた。｛人|ひと｝が｛集|あつ｝まる｛所|ところ｝には｛商|あきな｝いが｛生|う｝まれる。ここからが｛本番|ほんばん｝だぜ』',
+    4: 'アルノ『｛記録|きろく｝した｛数字|すうじ｝は｛嘘|うそ｝をつきません。この｛街|まち｝は、｛確|たし｝かに｛育|そだ｝っています』',
+    5: '｛夜|よる｝の｛帳|とばり｝が｛下|お｝りる｛瞬間|しゅんかん｝、｛街灯網|がいとうもう｝が｛波打|なみう｝つように｛一斉|いっせい｝に｛灯|とも｝った。かつてたった｛一|ひと｝つのランタンだった｛光|ひかり｝が、いま、｛街全体|まちぜんたい｝を｛照|て｝らしている。｛爽|さわ｝やかな｛風|かぜ｝が、｛街|まち｝を｛吹|ふ｝き｛抜|ぬ｝けていった。',
   };
 
   /* ---------- 施設定義 ---------- */
   const FACILITIES = [
     {
-      id: 'lantern', name: 'ランタン工房', char: 'レイン',
+      id: 'lantern', name: 'ランタン｛工房|こうぼう｝', char: 'rein',
       base: { maso: 15, shizai: 0 },
-      effect: lv => `魔素の自動生産 +1/秒×Lv（現在 +${trim1(lv)}/秒）`,
+      desc: 'レインが ランタンを ともす場所。ひかりが じどうで集まる',
+      stat: lv => 'いま ✦+' + trim1(lv) + '/秒',
     },
     {
-      id: 'market', name: '市場', char: 'バルト',
+      id: 'market', name: '｛市場|いちば｝', char: 'baruto',
       base: { maso: 40, shizai: 0 },
-      effect: lv => `資材の自動生産 +1/2秒×Lv（現在 +${trim1(lv * 0.5)}/秒）`,
+      desc: 'バルトの 元気な声が ひびく。もくざいが じどうで集まる',
+      stat: lv => 'いま ▤+' + trim1(lv * 0.5) + '/秒',
     },
     {
-      id: 'school', name: '学問所', char: 'アルノ',
+      id: 'school', name: '｛学問所|がくもんじょ｝', char: 'aruno',
       base: { maso: 100, shizai: 10 },
-      effect: lv => `タップ獲得量 +1×Lv（現在 タップ+${1 + lv}）`,
+      desc: 'アルノが 数字と 星をしらべる。タップで集まる ひかりが ふえる',
+      stat: lv => 'いま タップ✦+' + (1 + lv),
     },
     {
-      id: 'clinic', name: '救護院', char: 'リーザの遺志',
+      id: 'clinic', name: '｛救護院|きゅうごいん｝', char: 'rein',
       base: { maso: 250, shizai: 30 },
-      effect: lv => `全自動生産 +10%×Lv（現在 +${lv * 10}%）`,
+      desc: 'リーザの ねがいを ついだ場所。みんなの 仕事が はかどる',
+      stat: lv => 'いま じどうで集まる量 +' + lv * 10 + '%',
     },
     {
-      id: 'lights', name: '街灯網', char: 'ユリウス',
+      id: 'lights', name: '｛街灯網|がいとうもう｝', char: 'baruto',
       base: { maso: 600, shizai: 80 },
-      effect: lv => `発展度 +5×Lv・街の光が増える（現在 +${lv * 5}）`,
+      desc: '街のすみずみまで あかりを とどける',
+      stat: lv => 'いま かがやき +' + lv * 5,
     },
+  ];
+
+  /* ---------- 仲間の声 ---------- */
+  const VOICES = {
+    rein: {
+      name: 'レイン', cls: 'v-rein', emblem: '🕯',
+      lines: [
+        '……うん、いい｛感|かん｝じだ',
+        '｛確|たし｝かめながら、｛進|すす｝もう',
+        '｛灯|あか｝りがひとつ、ふえたね',
+        '｛静|しず｝かな｛夜|よる｝ほど、｛光|ひかり｝はよく｛見|み｝える',
+        'この｛調子|ちょうし｝で、いこう',
+        '……あの｛約束|やくそく｝に、｛少|すこ｝し｛近|ちか｝づいた',
+      ],
+    },
+    baruto: {
+      name: 'バルト', cls: 'v-baruto', emblem: '⚖',
+      lines: [
+        'よっしゃ、｛商売|しょうばい｝はんじょう!',
+        '｛人|ひと｝が｛集|あつ｝まりゃ｛街|まち｝は｛育|そだ｝つぜ!',
+        'いいねえ、にぎやかになってきた!',
+        '｛腹|はら｝がへったら｛市場|いちば｝に｛来|き｝な!',
+        'でっかくいこうぜ!',
+      ],
+    },
+    aruno: {
+      name: 'アルノ', cls: 'v-aruno', emblem: '✒',
+      lines: [
+        '｛記録|きろく｝しておきます',
+        '｛数字|すうじ｝は うそをつきません',
+        '｛順調|じゅんちょう｝です。とても',
+        '｛星|ほし｝の｛位置|いち｝も、｛今夜|こんや｝はいいようです',
+        '｛計算|けいさん｝どおり……いえ、それ｛以上|いじょう｝です',
+      ],
+    },
+  };
+  const FIRST_BUILD_LINE = { char: 'rein', text: '……うん、いい｛感|かん｝じだ。はじまりの｛一歩|いっぽ｝だね' };
+  const FIRST_RESIDENT_LINE = { char: 'baruto', text: 'お、はじめての｛住人|じゅうにん｝だ! にぎやかになるぜ!' };
+
+  /* ---------- 住人の節目（職業＋一言） ---------- */
+  const RESIDENT_MILESTONES = [
+    { n: 5,    text: 'パンやの ハンナ『いいにおいで みんなを よびよせるわ』' },
+    { n: 10,   text: 'はなやの ミレイユ『まどべに 花があると 笑顔が ふえるの』' },
+    { n: 20,   text: 'こびとの大工 ドン『いい木だ。おれが 屋根を なおしてやろう』' },
+    { n: 50,   text: 'りょうしの少年 テオ『川で 大きいのが つれたんだ!』' },
+    { n: 100,  text: '糸つむぎの リダばあちゃん『あたたかい 毛糸を あんであげようね』' },
+    { n: 200,  text: 'かじやの ガロ『火花だって 街の灯の なかまさ』' },
+    { n: 350,  text: '旅の楽士 ピポ『この街の歌を つくったよ。ききたい?』' },
+    { n: 500,  text: '星よみの ナジュ『星も この街を 見おろして わらってる』' },
+    { n: 750,  text: 'ぶどう園の フェルマ『みのりの きせつが たのしみだね』' },
+    { n: 1000, text: 'ゆうびんやの クルト『とどけたい 手紙が ふえるのは いい街の しるしさ』' },
   ];
 
   /* ---------- 状態 ---------- */
@@ -66,9 +149,10 @@
     maso: 0,
     shizai: 0,
     lv: { lantern: 0, market: 0, school: 0, clinic: 0, lights: 0 },
-    unlocked: [],   // 解放済みストーリー段階（2〜5）
-    maxStage: 1,    // 到達済みの最高段階
-    introSeen: false,
+    unlocked: [],      // 解放済みストーリー段階（2〜5）
+    maxStage: 1,       // 到達済みの最高段階
+    introSeen: false,  // オープニング「約束」を見たか
+    lastResidents: 0,  // 住人トースト用の前回値
     lastSaved: Date.now(),
   };
 
@@ -80,6 +164,9 @@
   const masoPerSec = () => state.lv.lantern * autoBonus();
   const shizaiPerSec = () => state.lv.market * 0.5 * autoBonus();
   const tapGain = () => 1 + state.lv.school;
+  const totalLv = () =>
+    state.lv.lantern + state.lv.market + state.lv.school + state.lv.clinic + state.lv.lights;
+  const residents = () => totalLv() * 2; // 施設の合計Lv×2人
   const devPoints = () =>
     state.lv.lantern + state.lv.market + state.lv.school +
     state.lv.clinic + state.lv.lights * 5;
@@ -127,12 +214,13 @@
   const overlay = $('modal-overlay');
   const modalTitle = $('modal-title');
   const modalBody = $('modal-body');
+  const toastArea = $('toast-area');
+  const openingEl = $('opening');
 
   /* ============================================================
      街ビュー描画（CSSのみ・段階ごとに自動生成）
      ============================================================ */
 
-  // 乱数（シード固定で段階ごとに同じ街並みを再現する）
   function mulberry32(a) {
     return function () {
       a |= 0; a = (a + 0x6D2B79F5) | 0;
@@ -157,7 +245,6 @@
     b.style.left = x + '%';
     b.style.width = w + '%';
     b.style.height = h + '%';
-    // 窓明かり
     if (winRatio > 0 && h >= 12) {
       const cols = Math.max(1, Math.round(w / 4));
       const rows = Math.max(1, Math.round(h / 11));
@@ -200,7 +287,6 @@
       } else {
         shape = SHAPES[Math.floor(rng() * SHAPES.length)];
       }
-      // 近景の窓は明るく・遠景は控えめに
       const ratio = layerKind === 'far' ? cfg.winRatio * 0.5 : cfg.winRatio;
       makeBuilding(layerEl, x, w, h, shape, ratio, rng);
     }
@@ -209,7 +295,6 @@
   /* ------------------------------------------------------------
      施設シルエット：プレイヤーが建てたものが街の絵として残る。
      state.lv から決定的に描くため、セーブ復元でも同じ街並みになる。
-     配置は段階1の小屋（38〜62%）を避けた固定位置。
      ------------------------------------------------------------ */
 
   function facWindows(b, lv, cap, cls, rng) {
@@ -301,7 +386,24 @@
     // 街灯網：renderCity のランタン光点の増加で表現する
   }
 
-  /* 建設・強化時：対象の建物が光と共に出現/成長する */
+  /* 住人の灯：人が増える＝窓明かりが増える、を絵で一致させる */
+  function renderResidentLights() {
+    const box = $('resident-lights');
+    box.textContent = '';
+    const n = Math.min(Math.floor(residents() / 2), 60);
+    const rng = mulberry32(state.maxStage * 100 + 9);
+    for (let i = 0; i < n; i++) {
+      const p = document.createElement('span');
+      p.className = 'res-light';
+      p.style.left = (3 + rng() * 94) + '%';
+      p.style.bottom = (9 + rng() * 26) + '%';
+      p.style.animationDuration = (2.2 + rng() * 3) + 's';
+      p.style.animationDelay = (-rng() * 4) + 's';
+      box.appendChild(p);
+    }
+  }
+
+  /* 建設・そだてる時：対象の建物が光と共に出現/成長する */
   function animateFacility(id) {
     document.querySelectorAll('#layer-fac [data-fac="' + id + '"]').forEach(el => {
       el.classList.add('grow');
@@ -318,7 +420,6 @@
     const flashing = cityEl.classList.contains('flash');
     cityEl.className = 'stage-' + stage + (flashing ? ' flash' : '');
 
-    // 星空
     const stars = $('stars');
     stars.textContent = '';
     for (let i = 0; i < cfg.stars; i++) {
@@ -333,12 +434,10 @@
       stars.appendChild(s);
     }
 
-    // 建物レイヤー
     fillLayer($('layer-far'), cfg.far, rng, stage, 'far');
     fillLayer($('layer-mid'), cfg.mid, rng, stage, 'mid');
     fillLayer($('layer-near'), cfg.near, rng, stage, 'near');
 
-    // ランタン・街灯・光の海
     const amb = $('ambient-lights');
     amb.textContent = '';
     const lanternCount = cfg.lanterns + Math.min(state.lv.lights * 2, 16);
@@ -369,6 +468,7 @@
     }
 
     renderFacilities();
+    renderResidentLights();
 
     $('stage-no').textContent = '段階 ' + stage;
     $('stage-name').textContent = STAGES[stage - 1].name;
@@ -387,6 +487,108 @@
     }, 1800);
   }
 
+  /* 祝祭演出：おめでとう!＋光の粒＋住人たちの歓声 */
+  const CHEERS = ['わあっ!', 'あかるい!', 'きれい!', 'やったあ!', 'すごい!'];
+  function playCelebration() {
+    const cel = $('celebration');
+    cel.textContent = '';
+    cel.hidden = false;
+    const title = document.createElement('div');
+    title.id = 'cel-title';
+    title.textContent = 'おめでとう!';
+    cel.appendChild(title);
+    for (let i = 0; i < 16; i++) {
+      const sp = document.createElement('span');
+      sp.className = 'cel-spark';
+      sp.style.left = (5 + Math.random() * 90) + '%';
+      sp.style.bottom = (Math.random() * 30) + '%';
+      sp.style.animationDelay = (Math.random() * 0.5) + 's';
+      sp.style.animationDuration = (0.9 + Math.random() * 0.7) + 's';
+      cel.appendChild(sp);
+    }
+    for (let i = 0; i < 6; i++) {
+      const c = document.createElement('span');
+      c.className = 'cheer';
+      c.textContent = CHEERS[i % CHEERS.length];
+      c.style.left = (8 + Math.random() * 76) + '%';
+      c.style.top = (28 + Math.random() * 45) + '%';
+      c.style.animationDelay = (Math.random() * 0.6) + 's';
+      cel.appendChild(c);
+    }
+    setTimeout(() => { cel.hidden = true; cel.textContent = ''; }, 1700);
+  }
+
+  /* ============================================================
+     トースト（仲間の声・住人のお知らせ）
+     ============================================================ */
+
+  function showToast(node, cls) {
+    const t = document.createElement('div');
+    t.className = 'toast' + (cls ? ' ' + cls : '');
+    t.appendChild(node);
+    toastArea.appendChild(t);
+    while (toastArea.children.length > 2) toastArea.firstChild.remove();
+    let closed = false;
+    const close = () => {
+      if (closed) return;
+      closed = true;
+      t.classList.add('out');
+      setTimeout(() => t.remove(), 350);
+    };
+    t.addEventListener('pointerdown', close);
+    setTimeout(close, 3000);
+    return t;
+  }
+
+  /* 仲間の一言（吹き出し。顔は描かず、キャラ色と紋章で表現） */
+  function speak(charId, line) {
+    const v = VOICES[charId];
+    if (!v) return;
+    const wrap = document.createDocumentFragment();
+    const em = document.createElement('span');
+    em.className = 'emblem';
+    em.textContent = v.emblem;
+    const body = document.createElement('span');
+    body.className = 'voice-body';
+    const name = document.createElement('span');
+    name.className = 'voice-name';
+    name.textContent = v.name;
+    const text = document.createElement('span');
+    text.appendChild(rubyText(line || v.lines[Math.floor(Math.random() * v.lines.length)]));
+    body.appendChild(name);
+    body.appendChild(text);
+    wrap.appendChild(em);
+    wrap.appendChild(body);
+    showToast(wrap, 'voice ' + v.cls);
+  }
+
+  function infoToast(text) {
+    const span = document.createElement('span');
+    span.appendChild(rubyText(text));
+    showToast(span, 'info');
+  }
+
+  /* ============================================================
+     住人システム
+     ============================================================ */
+
+  function checkResidents() {
+    const now = residents();
+    const prev = state.lastResidents;
+    if (now <= prev) return;
+    const ms = RESIDENT_MILESTONES.find(m => prev < m.n && now >= m.n);
+    if (ms) {
+      infoToast('🏠 ' + ms.text);
+    } else {
+      infoToast('🏠 あたらしい住人が 越してきた!');
+    }
+    if (prev === 0) {
+      setTimeout(() => speak(FIRST_RESIDENT_LINE.char, FIRST_RESIDENT_LINE.text), 600);
+    }
+    state.lastResidents = now;
+    renderResidentLights();
+  }
+
   /* ============================================================
      モーダル
      ============================================================ */
@@ -398,7 +600,7 @@
     modalTitle.textContent = title;
     modalBody.textContent = '';
     modalBody.appendChild(bodyNode);
-    $('modal-close').textContent = closeLabel || '閉じる';
+    $('modal-close').textContent = closeLabel || 'とじる';
     overlay.hidden = false;
   }
 
@@ -416,9 +618,11 @@
     head.className = 'story-stage';
     head.textContent = `発展段階${stageNum}「${STAGES[stageNum - 1].name}」`;
     const body = document.createElement('div');
-    body.textContent = unlockedFlag
-      ? STORY[stageNum]
-      : `？？？（発展段階${stageNum}に到達すると解放されます）`;
+    if (unlockedFlag) {
+      body.appendChild(rubyText(STORY[stageNum]));
+    } else {
+      body.textContent = `？？？（段階${stageNum}に なると よめるよ）`;
+    }
     div.appendChild(head);
     div.appendChild(body);
     return div;
@@ -432,26 +636,24 @@
     you.className = 'story-you';
     you.textContent = 'あなたたちの街は『' + STAGES[stageNum - 1].name + '』になった。';
     wrap.appendChild(you);
-    openModal('街の記録', wrap, '物語を続ける');
-  }
-
-  function showIntroModal() {
-    const wrap = document.createElement('div');
-    for (const line of INTRO_LINES) {
-      const p = document.createElement('p');
-      p.className = 'intro-line';
-      p.textContent = line;
-      wrap.appendChild(p);
-    }
-    openModal('灯火の街リーザ', wrap, '街づくりを始める');
+    openModal('街のきろく', wrap, '物語をつづける');
   }
 
   function showRecordsModal() {
     const wrap = document.createElement('div');
+    const replay = document.createElement('button');
+    replay.type = 'button';
+    replay.className = 'replay-btn';
+    replay.textContent = '✦ やくそくを もういちど見る';
+    replay.addEventListener('click', () => {
+      closeModal();
+      startOpening();
+    });
+    wrap.appendChild(replay);
     for (let s = 2; s <= 5; s++) {
       wrap.appendChild(storyNode(s, state.unlocked.includes(s)));
     }
-    openModal('記録 — 街のあゆみ', wrap);
+    openModal('きろく — 街のあゆみ', wrap);
   }
 
   function showSettingsModal() {
@@ -460,16 +662,16 @@
     const info = document.createElement('div');
     info.className = 'settings-row';
     info.textContent =
-      'セーブはこの端末のブラウザ（localStorage）に5秒ごと＋操作時に自動保存されます。' +
-      '最終保存：' + new Date(state.lastSaved).toLocaleString('ja-JP');
+      'ゲームは この端末（たんまつ）に じどうで ほぞんされます。' +
+      'さいごの ほぞん：' + new Date(state.lastSaved).toLocaleString('ja-JP');
     wrap.appendChild(info);
 
     const btn = document.createElement('button');
     btn.type = 'button';
     btn.className = 'danger-btn';
-    btn.textContent = 'セーブデータをリセット';
+    btn.textContent = 'セーブデータを リセット';
     btn.addEventListener('click', () => {
-      if (confirm('セーブデータを削除して、最初からやり直します。\nこの操作は取り消せません。よろしいですか？')) {
+      if (confirm('セーブデータを けして、さいしょから やりなおします。\nもとに もどせません。いいですか?')) {
         try { localStorage.removeItem(SAVE_KEY); } catch (e) { /* 失敗しても続行 */ }
         resetting = true;
         location.reload();
@@ -477,8 +679,60 @@
     });
     wrap.appendChild(btn);
 
-    openModal('設定', wrap);
+    openModal('せってい', wrap);
   }
+
+  /* ============================================================
+     オープニング「約束」
+     ============================================================ */
+
+  let opScene = 0;
+
+  function showScene(n) {
+    opScene = n;
+    openingEl.className = 'scene-' + n;
+    const text = $('op-text');
+    const startBtn = $('op-start');
+    const hint = $('op-next-hint');
+    if (n <= 3) {
+      rubyInto(text, OPENING_LINES[n - 1]);
+      text.hidden = false;
+      hint.hidden = false;
+      startBtn.hidden = true;
+    } else {
+      text.hidden = true;
+      hint.hidden = true;
+      startBtn.hidden = false;
+    }
+  }
+
+  function startOpening() {
+    openingEl.classList.remove('depart');
+    openingEl.hidden = false;
+    showScene(1);
+  }
+
+  function finishOpening(withFlash) {
+    if (!state.introSeen) {
+      state.introSeen = true;
+      save();
+      // 約束のあと、最初の目標をやさしく示す
+      setTimeout(() => infoToast(FIRST_GOAL_TOAST), withFlash ? 1100 : 400);
+    }
+    if (withFlash) {
+      openingEl.classList.add('depart'); // 画面が暖かく明転する
+      setTimeout(() => { openingEl.hidden = true; openingEl.classList.remove('depart'); }, 950);
+    } else {
+      openingEl.hidden = true;
+    }
+  }
+
+  openingEl.addEventListener('pointerdown', e => {
+    if (e.target.closest('#op-skip') || e.target.closest('#op-start')) return;
+    if (opScene >= 1 && opScene < 4) showScene(opScene + 1);
+  });
+  $('op-skip').addEventListener('click', () => finishOpening(false));
+  $('op-start').addEventListener('click', () => finishOpening(true));
 
   /* ============================================================
      施設カード
@@ -499,23 +753,30 @@
       head.className = 'card-head';
       const name = document.createElement('span');
       name.className = 'card-name';
-      name.textContent = fac.name;
+      name.appendChild(rubyText(fac.name));
       const char = document.createElement('span');
-      char.className = 'card-char';
-      char.textContent = '担当：' + fac.char;
+      char.className = 'card-char chip-' + fac.char;
+      char.textContent = VOICES[fac.char] ? VOICES[fac.char].name : '';
+      if (fac.id === 'clinic') char.textContent = 'リーザのねがい';
+      if (fac.id === 'lights') char.textContent = 'ユリウス';
       const lv = document.createElement('span');
       lv.className = 'card-lv';
       head.appendChild(name);
       head.appendChild(char);
       head.appendChild(lv);
 
-      const effect = document.createElement('div');
-      effect.className = 'card-effect';
+      const desc = document.createElement('div');
+      desc.className = 'card-effect';
+      desc.appendChild(rubyText(fac.desc));
+
+      const stat = document.createElement('div');
+      stat.className = 'card-stat';
       const cost = document.createElement('div');
       cost.className = 'card-cost';
 
       info.appendChild(head);
-      info.appendChild(effect);
+      info.appendChild(desc);
+      info.appendChild(stat);
       info.appendChild(cost);
 
       const btn = document.createElement('button');
@@ -527,7 +788,7 @@
       li.appendChild(btn);
       listEl.appendChild(li);
 
-      cardRefs[fac.id] = { lv, effect, cost, btn };
+      cardRefs[fac.id] = { lv, stat, cost, btn };
     }
   }
 
@@ -540,26 +801,25 @@
       const okShizai = state.shizai >= c.shizai;
 
       r.lv.textContent = 'Lv.' + lv;
-      r.effect.textContent = fac.effect(lv);
+      r.stat.textContent = fac.stat(lv);
 
       r.cost.textContent = '';
-      const label = document.createTextNode('必要：');
-      r.cost.appendChild(label);
+      r.cost.appendChild(document.createTextNode('ひつよう：'));
       const m = document.createElement('span');
       m.className = okMaso ? 'ok' : 'ng';
-      m.textContent = '魔素 ' + fmt(c.maso);
+      m.textContent = '✦' + fmt(c.maso);
       r.cost.appendChild(m);
       if (c.shizai > 0) {
         r.cost.appendChild(document.createTextNode('・'));
         const z = document.createElement('span');
         z.className = okShizai ? 'ok' : 'ng';
-        z.textContent = '資材 ' + fmt(c.shizai);
+        z.textContent = '▤' + fmt(c.shizai);
         r.cost.appendChild(z);
       }
 
-      r.btn.textContent = lv === 0 ? '建設' : '強化';
+      r.btn.textContent = lv === 0 ? 'たてる' : 'そだてる';
       const afford = okMaso && okShizai;
-      // 建設可能になった瞬間、ボタンをわずかに明滅させて気づかせる
+      // たてられるようになった瞬間、ボタンをわずかに明滅させて気づかせる
       if (afford && r.wasAfford === false) {
         r.btn.classList.add('ping');
         clearTimeout(r.pingTimer);
@@ -574,6 +834,7 @@
     const fac = FACILITIES.find(f => f.id === id);
     const c = costOf(fac, state.lv[id]);
     if (state.maso < c.maso || state.shizai < c.shizai) return;
+    const wasFirstBuild = totalLv() === 0;
     state.maso -= c.maso;
     state.shizai -= c.shizai;
     state.lv[id]++;
@@ -584,6 +845,13 @@
       renderFacilities();
       animateFacility(id); // 建物が光と共に出現/成長する
     }
+    // 仲間の一言（はじめての建設は、かならずレインが声をかける）
+    if (wasFirstBuild) {
+      speak(FIRST_BUILD_LINE.char, FIRST_BUILD_LINE.text);
+    } else {
+      speak(fac.char);
+    }
+    checkResidents();
     checkStage();
     updateAll();
     save();
@@ -601,8 +869,14 @@
     }
     state.maxStage = s;
     playWave();
-    setTimeout(renderCity, 650);          // 光の波の中で街並みが切り替わる
-    setTimeout(() => showStoryModal(s), 1000);
+    setTimeout(playCelebration, 250);      // おめでとう!の祝祭
+    setTimeout(renderCity, 650);           // 光の波の中で街並みが切り替わる
+    setTimeout(() => showStoryModal(s), 2000);
+    onModalClose = () => {
+      // 物語のあと、仲間がひとこと添える
+      const chars = ['rein', 'baruto', 'aruno'];
+      speak(chars[s % chars.length]);
+    };
     save();
   }
 
@@ -676,17 +950,21 @@
 
   /* 次の目標を現在の状況から自動判定する */
   function currentGoal() {
-    if (state.lv.lantern === 0) return 'ランタン工房を建てよう';
-    if (state.lv.market === 0) return '市場を建てよう';
-    if (state.maxStage >= 2 && state.lv.school === 0) return '学問所を建てよう（資材が必要）';
-    if (state.maxStage >= 3 && state.lv.clinic === 0) return '救護院を建てよう';
-    if (state.maxStage >= 3 && state.lv.lights === 0) return '街灯網を整備しよう';
+    if (state.lv.lantern === 0) {
+      return state.maso < 15
+        ? 'ひかりを 集めよう（街をタップ!）'
+        : 'ランタン工房を たてよう';
+    }
+    if (state.lv.market === 0) return '市場を たてよう';
+    if (state.maxStage >= 2 && state.lv.school === 0) return '学問所を たてよう（もくざいが いる）';
+    if (state.maxStage >= 3 && state.lv.clinic === 0) return '救護院を たてよう';
+    if (state.maxStage >= 3 && state.lv.lights === 0) return '街灯網を つくろう';
     if (state.maxStage < 5) {
       const next = STAGES[state.maxStage];
       const rest = Math.max(0, next.th - devPoints());
-      return '発展度' + next.th + 'で『' + next.name + '』になる（あと' + rest + '）';
+      return 'かがやき' + next.th + 'で 『' + next.name + '』になる（あと' + rest + '）';
     }
-    return '光の海を、さらに広げよう';
+    return 'ひかりの海を、もっと ひろげよう';
   }
 
   let lastGoal = '';
@@ -706,8 +984,11 @@
     $('res-shizai').textContent = fmt(shown.shizai);
     $('rate-maso').textContent = '+' + trim1(masoPerSec()) + '/秒';
     $('rate-shizai').textContent = '+' + trim1(shizaiPerSec()) + '/秒';
-    $('res-dev').textContent = fmt(devPoints());
-    $('res-stage').textContent = STAGES[state.maxStage - 1].name;
+    $('res-people').textContent = fmt(residents());
+    const next = state.maxStage < 5 ? STAGES[state.maxStage] : null;
+    $('stage-glow').textContent = next
+      ? 'かがやき ' + fmt(devPoints()) + '／' + next.th
+      : 'かがやき ' + fmt(devPoints());
   }
 
   function updateAll() {
@@ -748,6 +1029,7 @@
         unlocked: state.unlocked,
         maxStage: state.maxStage,
         introSeen: state.introSeen,
+        lastResidents: state.lastResidents,
         lastSaved: state.lastSaved,
       }));
     } catch (e) { /* プライベートモード等で保存できない場合は無視 */ }
@@ -768,7 +1050,7 @@
         ? d.unlocked.filter(n => n >= 2 && n <= 5)
         : [];
       state.maxStage = Math.min(5, Math.max(1, Math.floor(Number(d.maxStage) || 1)));
-      state.introSeen = d.introSeen !== false; // 既存セーブは導入を再表示しない
+      state.introSeen = d.introSeen !== false; // 既存セーブはオープニングを再表示しない
       state.lastSaved = Number(d.lastSaved) || Date.now();
       // 整合性：保存時より発展度が高ければ静かに段階を合わせる
       const s = stageFor(devPoints());
@@ -778,6 +1060,8 @@
         }
         state.maxStage = s;
       }
+      // 住人は再訪時にトーストの嵐にならないよう現在値に合わせる
+      state.lastResidents = residents();
       return true;
     } catch (e) { /* 壊れたデータは無視して新規開始 */ }
     return false;
@@ -797,9 +1081,7 @@
     btn.addEventListener('click', () => {
       const tab = btn.dataset.tab;
       setTab(tab);
-      if (tab === 'city') {
-        $('facility-area').scrollTo({ top: 0, behavior: 'smooth' });
-      } else if (tab === 'facility') {
+      if (tab === 'city' || tab === 'facility') {
         $('facility-area').scrollTo({ top: 0, behavior: 'smooth' });
       } else if (tab === 'records') {
         showRecordsModal();
@@ -824,13 +1106,11 @@
   buildFacilityList();
   renderCity();
   updateAll();
-  if (state.maso > 0 || Object.values(state.lv).some(v => v > 0)) {
+  if (state.maso > 0 || totalLv() > 0) {
     tapHint.classList.add('hidden');
   }
   if (!hadSave && !state.introSeen) {
-    state.introSeen = true;
-    showIntroModal();
-    save();
+    startOpening(); // オープニング「約束」（初回のみ）
   }
 
   setInterval(tick, 100);
