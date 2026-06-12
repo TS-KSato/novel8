@@ -37,12 +37,13 @@
     normalBias: 0.03,
   };
 
-  /* 露出（パステル調の明るさ） */
-  const EXPOSURE = 1.18;
+  /* 露出: 1.18ではACESのハイライト圧縮で昼の屋根色が白っぽく
+     脱色されていた。1.0に戻し「はっきりした色のまま柔らかい」へ */
+  const EXPOSURE = 1.0;
 
   const T = {
     ready: false,
-    CAM, SHADOW,
+    CAM, SHADOW, EXPOSURE,
     init, render, setCycle, animateFacility, lanternPoint, spawnWish,
     quantizeSunPos, // テスト用：影の角度更新の離散化ロジック
   };
@@ -255,6 +256,15 @@
 
     /* 島型ボード（台座の厚みでジオラマ感） */
     const S = model.board.size;
+
+    /* 接地影: 台座の真下に薄い楕円。置物感を締める */
+    const contact = new THREE.Mesh(geos().disc, new THREE.MeshBasicMaterial({
+      color: 0x2a2018, transparent: true, opacity: 0.18, depthWrite: false,
+    }));
+    contact.scale.set(S * 1.45, 0.4, S * 1.2); // 楕円
+    contact.position.y = -model.board.thickness - 0.06;
+    townGroup.add(contact);
+
     const base = new THREE.Mesh(geos().box, matOf(P.baseSide));
     base.scale.set(S, model.board.thickness, S);
     base.position.y = -model.board.thickness / 2;
@@ -427,15 +437,17 @@
 
   /* パステル調の昼夜キーフレーム（空・太陽・半球光） */
   /* 「常時、色がきれい」を最優先（リアルな色温度より優先）。
-     朝・夕も地面の緑が灰色に濁らないよう、半球光は白寄り・高めの明度を保つ */
+     昼の合計光量がLambertの飽和域(>1.3)に入ると色が白飛びして
+     彩度が抜けるため、昼の強度は hemi+sun ≒ 1.25 以下に抑える */
   const KEYS = [
     // t(秒), 霞色, 太陽色, 太陽強さ, 仰角(deg), 半球光(空/地/強さ)
-    { t: 0,   sky: 0xdfe9f6, sunC: 0xffe6c2, sunI: 0.48, elev: 22, hemiS: 0xf0f5fb, hemiG: 0xe8d8ba, hemiI: 0.98 },
-    { t: 85,  sky: 0xd5e7f8, sunC: 0xfff4e2, sunI: 0.6,  elev: 60, hemiS: 0xf6fafd, hemiG: 0xecdcc0, hemiI: 1.1 },
-    { t: 145, sky: 0xf6cfa6, sunC: 0xffb878, sunI: 0.5,  elev: 16, hemiS: 0xf8dcb8, hemiG: 0xe2c49e, hemiI: 0.95 },
+    { t: 0,   sky: 0xdfe9f6, sunC: 0xffe6c2, sunI: 0.42, elev: 22, hemiS: 0xf0f5fb, hemiG: 0xe8d8ba, hemiI: 0.85 },
+    { t: 85,  sky: 0xd5e7f8, sunC: 0xfff4e2, sunI: 0.45, elev: 60, hemiS: 0xf6fafd, hemiG: 0xecdcc0, hemiI: 0.88 },
+    { t: 145, sky: 0xf6cfa6, sunC: 0xffb878, sunI: 0.45, elev: 16, hemiS: 0xf8dcb8, hemiG: 0xe2c49e, hemiI: 0.82 },
     { t: 205, sky: 0x4a5a94, sunC: 0xb4c4ee, sunI: 0.24, elev: 45, hemiS: 0x8290c4, hemiG: 0x5e5468, hemiI: 0.7 },
-    { t: 240, sky: 0xdfe9f6, sunC: 0xffe6c2, sunI: 0.48, elev: 22, hemiS: 0xf0f5fb, hemiG: 0xe8d8ba, hemiI: 0.98 },
+    { t: 240, sky: 0xdfe9f6, sunC: 0xffe6c2, sunI: 0.42, elev: 22, hemiS: 0xf0f5fb, hemiG: 0xe8d8ba, hemiI: 0.85 },
   ];
+  T.KEYS = KEYS;
 
   let cA = null, cB = null;
   function lerpColor(a, b, f) {
