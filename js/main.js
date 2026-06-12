@@ -12,6 +12,16 @@
   const SAVE_KEY = 'toukaLizaSave_v1';
   const COST_RATE = 1.6;
 
+  /* 街ビューの描画方式。window.LIZA_USE_DIORAMA = false を
+     main.js より前に設定すると旧・横から見た夜景描画に戻る。 */
+  const dioramaOn = () =>
+    window.LIZA_USE_DIORAMA !== false && !!window.LizaTown;
+  const townData = () => ({
+    stage: state.maxStage,
+    lv: state.lv,
+    residents: residents(),
+  });
+
   /* ---------- ふりがな（ルビ）ヘルパー ----------
      「｛漢字|よみ｝」記法を <ruby> 要素にして返す。
      rt要素を除いたテキストは原文と完全に一致する。 */
@@ -395,6 +405,10 @@
   }
 
   function renderFacilities() {
+    if (dioramaOn()) {
+      window.LizaTown.render(townData());
+      return;
+    }
     const layer = $('layer-fac');
     layer.textContent = '';
     const rng = mulberry32(424242);
@@ -473,6 +487,10 @@
 
   /* 住人の灯：人が増える＝窓明かりが増える、を絵で一致させる */
   function renderResidentLights() {
+    if (dioramaOn()) {
+      window.LizaTown.render(townData()); // 民家・灯の密度として反映される
+      return;
+    }
     const box = $('resident-lights');
     box.textContent = '';
     const n = Math.min(Math.floor(residents() / 2), 60);
@@ -491,6 +509,10 @@
 
   /* 建設・そだてる時：対象の建物が光と共に出現/成長する */
   function animateFacility(id) {
+    if (dioramaOn()) {
+      window.LizaTown.animateFacility(id);
+      return;
+    }
     document.querySelectorAll('#layer-fac [data-fac="' + id + '"]').forEach(el => {
       el.classList.add('grow');
       el.addEventListener('animationend', () => el.classList.remove('grow'), { once: true });
@@ -504,7 +526,8 @@
 
     // 段階アップ演出（flash）の途中で呼ばれてもアニメーションを切らない
     const flashing = cityEl.classList.contains('flash');
-    cityEl.className = 'stage-' + stage + ' t-' + phaseAt(state.cyclePos) + (flashing ? ' flash' : '');
+    cityEl.className = 'stage-' + stage + ' t-' + phaseAt(state.cyclePos) +
+      (dioramaOn() ? ' diorama' : '') + (flashing ? ' flash' : '');
 
     const stars = $('stars');
     stars.textContent = '';
@@ -518,6 +541,18 @@
       s.style.animationDuration = (2.5 + rng() * 4) + 's';
       s.style.animationDelay = (-rng() * 5) + 's';
       stars.appendChild(s);
+    }
+
+    if (dioramaOn()) {
+      // ジオラマ描画：旧レイヤーは空にして、盤面に一括で描く
+      for (const id of ['layer-far', 'layer-mid', 'layer-near', 'layer-fac',
+        'resident-lights', 'ambient-lights']) {
+        $(id).textContent = '';
+      }
+      window.LizaTown.render(townData());
+      $('stage-no').textContent = '段階 ' + stage;
+      $('stage-name').textContent = STAGES[stage - 1].name;
+      return;
     }
 
     fillLayer($('layer-far'), cfg.far, rng, stage, 'far');
@@ -977,7 +1012,6 @@
       renderCity(); // 街灯網は光の本数に即反映
     } else {
       renderFacilities();
-      animateFacility(id); // 建物が光と共に出現/成長する
     }
     // 仲間の一言（はじめての建設は、かならずレインが声をかける）
     if (wasFirstBuild) {
@@ -990,6 +1024,9 @@
     checkPages(false); // 図鑑の新ページ解放チェック
     updateAll();
     save();
+    // 建物が光と共に出現/成長する演出。
+    // （住人処理などで盤面が再描画された後に付けないと消えてしまう）
+    animateFacility(id);
   }
 
   /* ============================================================
@@ -1135,15 +1172,20 @@
     tapLayer.appendChild(num);
 
     // 小さな光の粒が1〜3個ふわっと舞い上がる（同時表示数を制限）
-    // 夜のあいだは、粒がわずかに華やぐ
+    // ジオラマでは「はじまりのランタン」から舞い上がる。夜は粒が華やぐ
+    let sx = x, sy = y;
+    if (dioramaOn()) {
+      const p = window.LizaTown.lanternPoint();
+      if (p) { sx = p.x; sy = p.y; }
+    }
     const nightly = phaseAt(state.cyclePos) === 'night';
     if (tapLayer.querySelectorAll('.spark').length < 18) {
       const n = 1 + Math.floor(Math.random() * 3);
       for (let i = 0; i < n; i++) {
         const sp = document.createElement('span');
         sp.className = 'spark' + (nightly ? ' bright' : '');
-        sp.style.left = (x + (Math.random() * 30 - 15)) + 'px';
-        sp.style.top = (y + (Math.random() * 12 - 6)) + 'px';
+        sp.style.left = (sx + (Math.random() * 30 - 15)) + 'px';
+        sp.style.top = (sy + (Math.random() * 12 - 6)) + 'px';
         sp.style.setProperty('--dx', (Math.random() * 56 - 28).toFixed(0) + 'px');
         sp.style.animationDuration = (0.8 + Math.random() * 0.6) + 's';
         tapLayer.appendChild(sp);

@@ -1,0 +1,476 @@
+/* ============================================================
+   灯火の街リーザ — ジオラマ街ビュー専用スタイル
+   transform / opacity / filter のみでアニメーションし、
+   毎フレームの layout / paint を起こさない。
+   ============================================================ */
+
+#diorama {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  perspective: 720px;
+  perspective-origin: 50% 18%;
+  --tilt: 56deg;
+}
+
+/* 奥に傾いた地面ボード */
+#town-board {
+  position: absolute;
+  left: -22%;
+  bottom: -6%;
+  width: 144%;
+  height: 92%;
+  transform: rotateX(var(--tilt));
+  transform-origin: 50% 100%;
+  transform-style: preserve-3d;
+  border-radius: 18px;
+  box-shadow: 0 0 40px rgba(0, 0, 0, 0.35) inset;
+  transition: filter 30s linear;
+}
+
+/* 段階ごとの地面（土と草はら → 石畳 → 美しい敷石） */
+.g-stage-1 {
+  background:
+    radial-gradient(circle at 22% 30%, rgba(96, 122, 60, 0.5) 0 7%, transparent 8%),
+    radial-gradient(circle at 70% 70%, rgba(96, 122, 60, 0.42) 0 9%, transparent 10%),
+    radial-gradient(circle at 82% 24%, rgba(96, 122, 60, 0.35) 0 5%, transparent 6%),
+    radial-gradient(circle at 36% 78%, rgba(110, 134, 66, 0.4) 0 6%, transparent 7%),
+    linear-gradient(to bottom, #6b5a40, #75634a 55%, #6b5a44);
+}
+.g-stage-2 {
+  background:
+    radial-gradient(circle at 20% 26%, rgba(106, 136, 64, 0.55) 0 9%, transparent 10%),
+    radial-gradient(circle at 74% 68%, rgba(106, 136, 64, 0.5) 0 11%, transparent 12%),
+    radial-gradient(circle at 84% 22%, rgba(106, 136, 64, 0.4) 0 6%, transparent 7%),
+    radial-gradient(circle at 30% 80%, rgba(118, 148, 70, 0.46) 0 8%, transparent 9%),
+    linear-gradient(to bottom, #6e6045, #7a6a50 55%, #6e6048);
+}
+.g-stage-3 {
+  background:
+    radial-gradient(circle at 18% 28%, rgba(108, 138, 66, 0.5) 0 9%, transparent 10%),
+    radial-gradient(circle at 78% 70%, rgba(108, 138, 66, 0.45) 0 10%, transparent 11%),
+    repeating-linear-gradient(45deg, rgba(255, 255, 255, 0.03) 0 6px, transparent 6px 12px),
+    linear-gradient(to bottom, #6f6652, #7b715c 55%, #6f6654);
+}
+.g-stage-4 {
+  background:
+    radial-gradient(circle at 16% 26%, rgba(112, 142, 70, 0.5) 0 8%, transparent 9%),
+    radial-gradient(circle at 80% 72%, rgba(112, 142, 70, 0.45) 0 9%, transparent 10%),
+    repeating-linear-gradient(45deg, rgba(255, 244, 214, 0.05) 0 7px, transparent 7px 14px),
+    linear-gradient(to bottom, #746b58, #837964 55%, #746b5a);
+}
+.g-stage-5 {
+  background:
+    radial-gradient(circle at 14% 24%, rgba(118, 150, 76, 0.5) 0 8%, transparent 9%),
+    radial-gradient(circle at 82% 74%, rgba(118, 150, 76, 0.45) 0 9%, transparent 10%),
+    repeating-linear-gradient(45deg, rgba(255, 244, 214, 0.08) 0 8px, transparent 8px 16px),
+    repeating-linear-gradient(-45deg, rgba(255, 255, 255, 0.04) 0 8px, transparent 8px 16px),
+    linear-gradient(to bottom, #7a7160, #8a806c 55%, #7a7162);
+}
+
+/* 道（十字）と広場 */
+.road {
+  position: absolute;
+  background: linear-gradient(to bottom, rgba(58, 48, 38, 0.55), rgba(58, 48, 38, 0.45));
+}
+.road-ns { left: 45%; top: 0; width: 10%; height: 100%; }
+.road-ew { left: 0; top: 46%; width: 100%; height: 12%; }
+.g-stage-3 .road, .g-stage-4 .road {
+  background:
+    repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.06) 0 8px, transparent 8px 16px),
+    linear-gradient(to bottom, rgba(92, 84, 76, 0.85), rgba(82, 75, 68, 0.85));
+}
+.g-stage-5 .road {
+  background:
+    repeating-linear-gradient(90deg, rgba(255, 240, 200, 0.10) 0 9px, transparent 9px 18px),
+    linear-gradient(to bottom, rgba(104, 96, 86, 0.9), rgba(92, 85, 76, 0.9));
+}
+.plaza {
+  position: absolute;
+  left: 50%; top: 52%;
+  width: 30%; height: 26%;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  background: radial-gradient(ellipse, rgba(120, 106, 88, 0.9), rgba(96, 86, 72, 0.85) 70%);
+  box-shadow: 0 0 18px rgba(0, 0, 0, 0.2) inset;
+}
+.g-stage-1 .plaza { background: radial-gradient(ellipse, rgba(110, 94, 72, 0.9), rgba(88, 76, 58, 0.8) 70%); }
+.g-stage-5 .plaza {
+  background:
+    repeating-radial-gradient(ellipse, rgba(255, 240, 200, 0.07) 0 7px, transparent 7px 14px),
+    radial-gradient(ellipse, rgba(132, 118, 98, 0.95), rgba(104, 94, 78, 0.9) 70%);
+}
+
+/* 地面の飾り */
+.deco-bush {
+  position: absolute;
+  width: 16px; height: 11px;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 35%, #7a9a50, #5c7a3c 70%);
+}
+.deco-flowerbed {
+  position: absolute;
+  width: 26px; height: 13px;
+  transform: translate(-50%, -50%);
+  border-radius: 7px;
+  background:
+    radial-gradient(circle at 22% 50%, #e08aa0 0 2.5px, transparent 3px),
+    radial-gradient(circle at 50% 38%, #e8c060 0 2.5px, transparent 3px),
+    radial-gradient(circle at 76% 56%, #b88ad8 0 2.5px, transparent 3px),
+    linear-gradient(#5e7c42, #50693a);
+  box-shadow: 0 0 0 2px rgba(255, 244, 214, 0.25);
+}
+.deco-flowers {
+  position: absolute;
+  width: 12px; height: 7px;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  background:
+    radial-gradient(circle at 30% 50%, #e8a0b4 0 2px, transparent 2.5px),
+    radial-gradient(circle at 70% 45%, #e8d080 0 2px, transparent 2.5px),
+    radial-gradient(circle, #5e7c42, #506a3a);
+}
+.deco-canal {
+  position: absolute;
+  left: 0; top: 70%;
+  width: 100%; height: 5%;
+  background: linear-gradient(to bottom,
+    rgba(110, 170, 210, 0.55), rgba(80, 140, 190, 0.6), rgba(110, 170, 210, 0.5));
+  box-shadow: 0 0 8px rgba(140, 200, 240, 0.4);
+}
+
+/* ============================================================
+   スタンディ（盤面に立つミニチュア）
+   ============================================================ */
+
+.standee {
+  position: absolute;
+  width: 0; height: 0;
+  transform: rotateX(calc(-1 * var(--tilt, 56deg)));
+  transform-origin: 50% 100%;
+}
+.standee.grow { animation: townGrow 0.6s ease-out; }
+@keyframes townGrow {
+  0%   { transform: rotateX(calc(-1 * var(--tilt, 56deg))) scale(0.6); filter: brightness(2.2); }
+  60%  { transform: rotateX(calc(-1 * var(--tilt, 56deg))) scale(1.08); filter: brightness(1.6); }
+  100% { transform: rotateX(calc(-1 * var(--tilt, 56deg))) scale(1); filter: brightness(1); }
+}
+
+/* --- はじまりのランタン（常時灯る象徴） --- */
+.lantern-base {
+  position: absolute;
+  left: 50%; bottom: -3px;
+  width: 16px; height: 5px;
+  transform: translateX(-50%);
+  border-radius: 3px;
+  background: #4a4038;
+}
+.lantern-pole {
+  position: absolute;
+  left: 50%; bottom: 0;
+  width: 4px; height: 30px;
+  transform: translateX(-50%);
+  border-radius: 2px;
+  background: linear-gradient(to right, #5c4c3c, #3e332a);
+}
+.lantern-head {
+  position: absolute;
+  left: 50%; bottom: 26px;
+  width: 12px; height: 14px;
+  transform: translateX(-50%);
+  border-radius: 4px;
+  background: radial-gradient(circle at 50% 55%, #ffe9b0, #ffb24d 75%);
+  border: 2px solid #4a4038;
+  box-shadow:
+    0 0 12px 5px rgba(255, 200, 110, 0.85),
+    0 0 36px 16px rgba(255, 165, 75, 0.4),
+    0 0 80px 38px rgba(255, 145, 60, 0.15);
+  animation: lanternSway 2.6s ease-in-out infinite;
+}
+
+/* --- 建物の共通ブロック（正面+側面+屋根の簡易立体） --- */
+.b {
+  position: absolute;
+  left: 50%; bottom: 0;
+  transform: translateX(-50%);
+  width: 44px; height: 30px;
+}
+.b-front {
+  position: absolute;
+  inset: 0;
+  border-radius: 3px 3px 2px 2px;
+  background: linear-gradient(to bottom, #c9a87c, #b6946a);
+  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.25);
+}
+.b-side {
+  position: absolute;
+  right: -8px; top: 3px;
+  width: 8px; height: calc(100% - 3px);
+  transform: skewY(-32deg);
+  transform-origin: left top;
+  background: rgba(74, 56, 38, 0.85);
+  border-radius: 0 2px 2px 0;
+}
+.b-roof {
+  position: absolute;
+  left: -5px; top: -14px;
+  width: calc(100% + 18px); height: 16px;
+  clip-path: polygon(0 100%, 50% 0, 100% 100%);
+  background: linear-gradient(to bottom, #b06038, #94502e);
+}
+.b-door {
+  position: absolute;
+  left: 50%; bottom: 0;
+  width: 9px; height: 12px;
+  transform: translateX(-50%);
+  border-radius: 4px 4px 0 0;
+  background: #5c4030;
+}
+.t-win {
+  position: absolute;
+  width: 5px; height: 6px;
+  border-radius: 1.5px;
+  background: #ffe2a0;
+  box-shadow: 0 0 6px 2px rgba(255, 190, 100, 0.8);
+  animation: flicker 2.6s ease-in-out infinite;
+  transition: opacity 2.2s ease;
+  transition-delay: var(--lit-delay, 0s);
+}
+.b-sign {
+  position: absolute;
+  left: -10px; bottom: 8px;
+  width: 10px; height: 8px;
+  border-radius: 2px;
+  background: #efe2c4;
+  border: 1.5px solid #6e5a45;
+  box-shadow: -1px 1px 0 rgba(0, 0, 0, 0.25);
+}
+.b-floor2 {
+  position: absolute;
+  left: 4px; top: -26px;
+  width: calc(100% - 8px); height: 14px;
+  border-radius: 3px 3px 0 0;
+  background: linear-gradient(to bottom, #d4b388, #c2a276);
+  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.2);
+}
+.b-flag {
+  position: absolute;
+  left: 50%; top: -38px;
+  width: 2px; height: 14px;
+  background: #5c4c3c;
+}
+.b-flag::after {
+  content: "";
+  position: absolute;
+  left: 2px; top: 0;
+  width: 10px; height: 6px;
+  clip-path: polygon(0 0, 100% 50%, 0 100%);
+  background: #ffbe62;
+}
+.b-deco {
+  position: absolute;
+  inset: -4px -4px -2px -4px;
+  border-radius: 6px;
+  border: 1.5px solid rgba(255, 220, 150, 0.65);
+  box-shadow: 0 0 10px rgba(255, 200, 110, 0.5);
+  pointer-events: none;
+}
+
+/* 成長段階で建物が大きくなる */
+.tier-2 .b { height: 38px; }
+.tier-3 .b { height: 44px; }
+.tier-3 .b-roof { top: -40px; }
+.tier-4 .b { height: 50px; width: 50px; }
+.tier-4 .b-roof { top: -44px; }
+.tier-3 .b-floor2 { top: -26px; }
+.tier-3 .b .b-roof, .tier-4 .b .b-roof { top: auto; }
+.tier-3 .b-roof, .tier-4 .b-roof { top: -40px; }
+
+/* --- ランタン工房：橙屋根・煙突・戸口の吊りランタン --- */
+.fac-lantern .b-front { background: linear-gradient(to bottom, #c9a87c, #b08a5e); }
+.fac-lantern .b-roof { background: linear-gradient(to bottom, #d07838, #b06030); }
+.fac-lantern .b-chimney {
+  position: absolute;
+  right: 6px; top: -22px;
+  width: 7px; height: 12px;
+  background: #6e5a45;
+  border-radius: 2px 2px 0 0;
+}
+.fac-lantern .b-hang {
+  position: absolute;
+  left: 50%; bottom: 13px;
+  width: 6px; height: 7px;
+  transform: translateX(-130%);
+  border-radius: 2px;
+  background: #ffd98e;
+  box-shadow: 0 0 8px 3px rgba(255, 195, 110, 0.85);
+  animation: lanternSway 2.2s ease-in-out infinite;
+}
+.fac-lantern .b-sign::after {
+  content: "";
+  position: absolute;
+  left: 2.5px; top: 1.5px;
+  width: 3px; height: 3px;
+  border-radius: 50%;
+  background: #d08a20;
+}
+
+/* --- 市場：赤白の日よけ・木箱 --- */
+.fac-market .b-front { background: linear-gradient(to bottom, #d8b88a, #c4a070); }
+.fac-market .b-roof { background: linear-gradient(to bottom, #8a6a40, #74582e); }
+.fac-market .b-awning {
+  position: absolute;
+  left: -3px; bottom: 14px;
+  width: calc(100% + 6px); height: 9px;
+  border-radius: 3px 3px 1px 1px;
+  background: repeating-linear-gradient(90deg,
+    #d05848 0 6px, #f4ead2 6px 12px);
+  box-shadow: 0 1.5px 0 rgba(0, 0, 0, 0.25);
+}
+.fac-market .b-crate {
+  position: absolute;
+  right: -14px; bottom: 0;
+  width: 9px; height: 9px;
+  border-radius: 1.5px;
+  background: linear-gradient(135deg, #a07c4e, #84623a);
+  box-shadow: -11px 1px 0 -1px #8a6a40;
+}
+
+/* --- 学問所：藍屋根・塔のとんがり・星の印 --- */
+.fac-school .b-front { background: linear-gradient(to bottom, #aab4c8, #909caf); }
+.fac-school .b-roof { background: linear-gradient(to bottom, #4a5a8c, #3a4774); }
+.fac-school .t-win { background: #d4e6ff; box-shadow: 0 0 6px 2px rgba(150, 195, 255, 0.85); }
+.fac-school .b-towercap {
+  position: absolute;
+  left: 50%; top: -30px;
+  width: 14px; height: 16px;
+  transform: translateX(-50%);
+  clip-path: polygon(0 100%, 50% 0, 100% 100%);
+  background: #3a4774;
+}
+.tier-3 .b-towercap, .tier-4 .b-towercap { top: -56px; }
+.fac-school .b-starmark {
+  position: absolute;
+  left: 50%; top: -36px;
+  width: 6px; height: 6px;
+  transform: translateX(-50%);
+  clip-path: polygon(50% 0, 63% 35%, 100% 38%, 72% 60%, 82% 100%, 50% 76%, 18% 100%, 28% 60%, 0 38%, 37% 35%);
+  background: #ffe9b0;
+  box-shadow: 0 0 8px rgba(255, 230, 170, 0.8);
+}
+.tier-3 .b-starmark, .tier-4 .b-starmark { top: -62px; }
+
+/* --- 救護院：白壁・緑屋根・葉の印・やさしい光 --- */
+.fac-clinic .b-front { background: linear-gradient(to bottom, #f0e6d2, #ddd2bc); }
+.fac-clinic .b-roof { background: linear-gradient(to bottom, #5e8c5a, #4a7448); }
+.fac-clinic .t-win { background: #e2ffe9; box-shadow: 0 0 6px 2px rgba(160, 240, 190, 0.8); }
+.fac-clinic .b-leaf {
+  position: absolute;
+  left: 50%; bottom: 16px;
+  width: 8px; height: 8px;
+  transform: translateX(-50%) rotate(45deg);
+  border-radius: 0 70% 0 70%;
+  background: #6aa860;
+}
+.fac-clinic .b-aura {
+  position: absolute;
+  left: 50%; bottom: -4px;
+  width: 70px; height: 40px;
+  transform: translateX(-50%);
+  border-radius: 50%;
+  background: radial-gradient(ellipse at 50% 100%,
+    rgba(190, 250, 210, 0.3), rgba(190, 250, 210, 0.1) 55%, transparent 75%);
+  pointer-events: none;
+  transition: opacity 8s ease;
+}
+
+/* --- 民家 --- */
+.hb {
+  position: absolute;
+  left: 50%; bottom: 0;
+  transform: translateX(-50%);
+  width: 24px; height: 17px;
+}
+.hb-front {
+  position: absolute;
+  inset: 0;
+  border-radius: 2px;
+  background: linear-gradient(to bottom, #cdb088, #b89a70);
+}
+.hb-side {
+  position: absolute;
+  right: -5px; top: 2px;
+  width: 5px; height: calc(100% - 2px);
+  transform: skewY(-32deg);
+  transform-origin: left top;
+  background: rgba(74, 56, 38, 0.8);
+}
+.hb-door {
+  position: absolute;
+  left: 22%; bottom: 0;
+  width: 6px; height: 8px;
+  border-radius: 3px 3px 0 0;
+  background: #5c4030;
+}
+.hb-roof {
+  position: absolute;
+  left: -3px; top: -9px;
+  width: calc(100% + 11px); height: 10px;
+  clip-path: polygon(0 100%, 50% 0, 100% 100%);
+}
+.hb-roof.roof-a { background: #b06a48; }
+.hb-roof.roof-b { background: #9a7440; }
+.hb-roof.roof-c { background: #74904e; }
+.hb-roof.roof-d { background: #8a6488; }
+.t-home .t-win { width: 4px; height: 5px; }
+
+/* --- 街灯ポール --- */
+.lamp-pole {
+  position: absolute;
+  left: 50%; bottom: 0;
+  width: 2.5px; height: 22px;
+  transform: translateX(-50%);
+  border-radius: 2px;
+  background: linear-gradient(to right, #4e4238, #332b24);
+}
+.lamp-glow {
+  position: absolute;
+  left: 50%; bottom: 20px;
+  width: 6px; height: 6px;
+  transform: translateX(-50%);
+  border-radius: 50%;
+  background: #ffe2a0;
+  box-shadow:
+    0 0 8px 3px rgba(255, 195, 110, 0.85),
+    0 0 20px 8px rgba(255, 160, 70, 0.3);
+}
+
+/* 上限超過ぶんの住人を表す地面の小さな灯 */
+.ground-glow {
+  width: 4px; height: 4px;
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+}
+
+/* ============================================================
+   昼夜サイクルとの統合
+   盤面全体の色調は filter、灯は opacity で変化（30秒トランジション）
+   ============================================================ */
+
+#city-view.t-morning #town-board { filter: brightness(1.12) saturate(1.05); }
+#city-view.t-day     #town-board { filter: brightness(1.3)  saturate(1.12); }
+#city-view.t-dusk    #town-board { filter: brightness(1.0)  saturate(1.12) sepia(0.12); }
+#city-view.t-night   #town-board { filter: brightness(0.78) saturate(0.92); }
+
+/* 朝・昼は窓明かりと街灯が休む（はじまりのランタンは灯り続ける） */
+#city-view.t-morning .t-win:not(.always-lit),
+#city-view.t-day     .t-win:not(.always-lit) {
+  opacity: 0 !important;
+}
+#city-view.t-morning .fac-clinic .b-aura,
+#city-view.t-day     .fac-clinic .b-aura { opacity: 0 !important; }
+
+/* ジオラマ使用時は旧描画専用の演出を消しておく */
+#city-view.diorama #market-glow { display: none; }
+#city-view.diorama #ground { display: none; }
