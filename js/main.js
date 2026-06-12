@@ -555,18 +555,7 @@
     cityEl.className = 'stage-' + stage + ' t-' + phaseAt(state.cyclePos) +
       (glOn() ? ' gl' : dioramaOn() ? ' diorama' : '') + (flashing ? ' flash' : '');
 
-    if (glOn()) {
-      // 3D描画：DOM側のレイヤーと空はすべて空にして、シーンに一括で描く
-      for (const id of ['layer-far', 'layer-mid', 'layer-near', 'layer-fac',
-        'resident-lights', 'ambient-lights', 'stars']) {
-        $(id).textContent = '';
-      }
-      window.LizaTown3D.render(townData());
-      $('stage-no').textContent = '段階 ' + stage;
-      $('stage-name').textContent = STAGES[stage - 1].name;
-      return;
-    }
-
+    // 星空はCSSが描く（3Dモードでも空＝CSSグラデーション+雲+星を使う）
     const stars = $('stars');
     stars.textContent = '';
     for (let i = 0; i < cfg.stars; i++) {
@@ -579,6 +568,18 @@
       s.style.animationDuration = (2.5 + rng() * 4) + 's';
       s.style.animationDelay = (-rng() * 5) + 's';
       stars.appendChild(s);
+    }
+
+    if (glOn()) {
+      // 3D描画：DOM側の建物レイヤーは空にして、シーンに一括で描く
+      for (const id of ['layer-far', 'layer-mid', 'layer-near', 'layer-fac',
+        'resident-lights', 'ambient-lights']) {
+        $(id).textContent = '';
+      }
+      window.LizaTown3D.render(townData());
+      $('stage-no').textContent = '段階 ' + stage;
+      $('stage-name').textContent = STAGES[stage - 1].name;
+      return;
     }
 
     if (dioramaOn()) {
