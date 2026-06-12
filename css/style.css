@@ -396,20 +396,22 @@ rt { font-size: 0.55em; opacity: 0.8; letter-spacing: 0; }
 @keyframes hintPulse { 0%, 100% { opacity: 0.85; } 50% { opacity: 0.35; } }
 #tap-hint.hidden { opacity: 0; animation: none; }
 
-/* 共通アニメーション */
+/* 共通アニメーション
+   ※ 灯のゆらぎは filter(brightness) で表現する。
+     opacity は昼夜サイクルの点灯/消灯フェードのために空けておく。 */
 @keyframes flicker {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.5; }
+  0%, 100% { filter: brightness(1); }
+  50% { filter: brightness(0.55); }
 }
 @keyframes twinkle {
   0%, 100% { opacity: 0.85; }
   50% { opacity: 0.2; }
 }
 @keyframes lanternSway {
-  0%, 100% { opacity: 1; transform: translateY(0); }
-  35% { opacity: 0.65; }
-  50% { opacity: 0.9; transform: translateY(-1px); }
-  70% { opacity: 0.55; }
+  0%, 100% { filter: brightness(1); transform: translateY(0); }
+  35% { filter: brightness(0.7); }
+  50% { filter: brightness(0.95); transform: translateY(-1px); }
+  70% { filter: brightness(0.6); }
 }
 @keyframes glowPulse {
   0%, 100% { transform: scaleX(1); }
@@ -987,3 +989,215 @@ rt { font-size: 0.55em; opacity: 0.8; letter-spacing: 0; }
   font-weight: bold;
 }
 .replay-btn:active { transform: scale(0.96); }
+
+/* ============================================================
+   昼夜サイクル（朝→昼→夕→夜。色の変化はCSS transitionで約30秒）
+   段階ごとの空（夜の姿）を土台に、半透明のティント層を重ねて
+   時間帯の色をのせる。「段階の個性 > 時間帯の色」を保つ。
+   ============================================================ */
+
+#sky-tints { position: absolute; inset: 0; pointer-events: none; }
+.tint {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  transition: opacity 30s linear;
+}
+/* 朝：地平線から淡い金色、空は薄い水色〜藤色。建物はやわらかい逆光 */
+.tint-morning {
+  background: linear-gradient(to bottom,
+    #a9b8da 0%, #bdb2da 32%, #d9bfae 55%, #f0d3a0 68%, #e8c290 76%,
+    #b08e7a 88%, #6e5a5c 100%);
+}
+/* 昼：もっとも明るく広い薄青の空 */
+.tint-day {
+  background: linear-gradient(to bottom,
+    #9dc2e8 0%, #abceee 38%, #c2daf0 64%, #d6e2ea 80%,
+    #b6b9c2 92%, #9a978f 100%);
+}
+/* 夕：こはく色〜茜色 */
+.tint-dusk {
+  background: linear-gradient(to bottom,
+    #574a88 0%, #84577a 34%, #b96760 56%, #e4944e 70%, #d4824a 76%,
+    #8a5648 88%, #4e3848 100%);
+}
+#city-view.t-morning .tint-morning { opacity: 0.82; }
+#city-view.t-day     .tint-day     { opacity: 0.88; }
+#city-view.t-dusk    .tint-dusk    { opacity: 0.7; }
+
+/* 雲（朝・昼にゆっくり流れる） */
+#clouds {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 30s linear;
+}
+#city-view.t-morning #clouds { opacity: 0.45; }
+#city-view.t-day     #clouds { opacity: 0.85; }
+.cloud {
+  position: absolute;
+  background: rgba(255, 255, 255, 0.75);
+  border-radius: 50%;
+  filter: blur(7px);
+  animation: cloudDrift linear infinite;
+}
+.cloud.c1 { width: 90px;  height: 22px; top: 14%; animation-duration: 95s;  animation-delay: -20s; }
+.cloud.c2 { width: 60px;  height: 16px; top: 26%; animation-duration: 120s; animation-delay: -70s; }
+.cloud.c3 { width: 110px; height: 26px; top: 7%;  animation-duration: 150s; animation-delay: -110s; }
+@keyframes cloudDrift {
+  from { transform: translateX(-30vw); }
+  to   { transform: translateX(110vw); }
+}
+
+/* 灯の点灯/消灯：時間差(--lit-delay)で一つずつ */
+.win, .lantern, .sea-light, .res-light {
+  transition: opacity 2.2s ease;
+  transition-delay: var(--lit-delay, 0s);
+}
+#market-glow, .stall-glow, .clinic-aura { transition: opacity 8s ease; }
+
+/* 朝・昼：窓明かりとランタンは休む（段階1の主役ランタンだけは灯り続ける） */
+#city-view.t-morning .win, #city-view.t-day .win,
+#city-view.t-morning .lantern:not(.hero), #city-view.t-day .lantern:not(.hero),
+#city-view.t-morning .sea-light, #city-view.t-day .sea-light,
+#city-view.t-morning .res-light, #city-view.t-day .res-light,
+#city-view.t-morning .stall-glow, #city-view.t-day .stall-glow,
+#city-view.t-morning .clinic-aura, #city-view.t-day .clinic-aura,
+#city-view.t-morning #market-glow, #city-view.t-day #market-glow {
+  opacity: 0 !important;
+}
+
+/* 星と月は夜（と夕の名残）にだけ */
+#stars { transition: opacity 30s linear; }
+#city-view.t-morning #stars { opacity: 0.15; }
+#city-view.t-day     #stars { opacity: 0; }
+#city-view.t-dusk    #stars { opacity: 0.5; }
+#city-view.t-morning #moon, #city-view.t-day #moon { opacity: 0 !important; }
+
+/* 夜のタップ：粒がわずかに華やぐ */
+.spark.bright {
+  width: 5px; height: 5px;
+  box-shadow:
+    0 0 8px 3px rgba(255, 210, 130, 0.95),
+    0 0 18px 7px rgba(255, 180, 90, 0.4);
+}
+
+/* ============================================================
+   ねがいぼし（昼=光る蝶 / 夜=流れ星）
+   ============================================================ */
+
+#wish-layer { position: absolute; inset: 0; pointer-events: none; }
+.wish {
+  position: absolute;
+  width: 48px; height: 48px;     /* タップしやすい大きさ */
+  pointer-events: auto;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  animation: wishLife 6s ease forwards;
+}
+.wish.gone { animation: wishOut 0.5s ease forwards; }
+@keyframes wishLife {
+  0% { opacity: 0; }
+  8% { opacity: 1; }
+  85% { opacity: 1; }
+  100% { opacity: 0; }
+}
+@keyframes wishOut { to { opacity: 0; } }
+
+/* 流れ星：ゆっくり斜めにながれる光 */
+.wish-star { animation: wishLife 6s ease forwards, wishDrift 6s linear forwards; }
+@keyframes wishDrift { to { transform: translate(-44px, 26px); } }
+.wish-star .wish-core {
+  position: absolute;
+  left: 50%; top: 50%;
+  width: 7px; height: 7px;
+  border-radius: 50%;
+  background: #fff7e0;
+  box-shadow:
+    0 0 10px 4px rgba(255, 235, 180, 0.95),
+    0 0 26px 10px rgba(255, 210, 130, 0.45);
+}
+.wish-star .wish-core::after {
+  content: "";
+  position: absolute;
+  left: 5px; top: 2px;
+  width: 46px; height: 2.5px;
+  border-radius: 2px;
+  transform: rotate(-28deg);
+  transform-origin: left center;
+  background: linear-gradient(to right, rgba(255, 240, 200, 0.95), transparent);
+}
+
+/* 光る蝶：はばたく2枚のはね */
+.wish-butterfly .wish-core {
+  position: absolute;
+  left: 50%; top: 50%;
+  width: 2.5px; height: 9px;
+  border-radius: 2px;
+  background: #fff3d6;
+  box-shadow: 0 0 8px 3px rgba(255, 240, 200, 0.8);
+  animation: butterflyBob 1.6s ease-in-out infinite;
+}
+.wish-butterfly .wish-core::before,
+.wish-butterfly .wish-core::after {
+  content: "";
+  position: absolute;
+  top: -1px;
+  width: 9px; height: 11px;
+  border-radius: 60% 60% 45% 45%;
+  background: rgba(255, 244, 214, 0.9);
+  box-shadow: 0 0 9px 3px rgba(255, 226, 160, 0.65);
+}
+.wish-butterfly .wish-core::before {
+  left: -9px;
+  transform-origin: right center;
+  animation: flapL 0.45s ease-in-out infinite;
+}
+.wish-butterfly .wish-core::after {
+  left: 2.5px;
+  transform-origin: left center;
+  animation: flapR 0.45s ease-in-out infinite;
+}
+@keyframes flapL { 0%, 100% { transform: scaleX(1); } 50% { transform: scaleX(0.35); } }
+@keyframes flapR { 0%, 100% { transform: scaleX(1); } 50% { transform: scaleX(0.35); } }
+@keyframes butterflyBob {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-7px); }
+}
+
+.wish-num {
+  font-size: 16px;
+  color: #fff3d6;
+  animation-duration: 1.05s;
+}
+
+/* ============================================================
+   ずかん（街のあゆみ＋ものがたり）
+   ============================================================ */
+
+.zukan-head {
+  font-size: 11px;
+  letter-spacing: 3px;
+  text-align: center;
+  color: var(--text-dim);
+  margin: 14px 0 8px;
+}
+.page-card {
+  background: rgba(255, 220, 150, 0.06);
+  border: 1px solid rgba(255, 192, 110, 0.28);
+  border-radius: 14px;
+  padding: 10px 12px;
+  margin-bottom: 10px;
+}
+.page-title {
+  font-size: 13px;
+  font-weight: bold;
+  color: var(--amber-bright);
+  margin-bottom: 4px;
+}
+.page-text { font-size: 12.5px; line-height: 2; }
+.page-locked { opacity: 0.75; }
+.page-locked .page-title { color: var(--text-dim); }
+.page-locked .page-text { color: var(--text-dim); font-size: 11px; }

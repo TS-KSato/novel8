@@ -34,6 +34,32 @@
   }
   const rubyInto = (el, str) => { el.textContent = ''; el.appendChild(rubyText(str)); };
 
+  /* ---------- 昼夜サイクル ----------
+     朝→昼→夕→夜。1周は実時間で約4分（定数で調整可能）。 */
+  const PHASES = [
+    { id: 'morning', dur: 50 },
+    { id: 'day',     dur: 70 },
+    { id: 'dusk',    dur: 50 },
+    { id: 'night',   dur: 70 },
+  ];
+  const CYCLE_LEN = PHASES.reduce((a, p) => a + p.dur, 0); // 240秒
+  const NIGHT_START = 170; // 物語は夜から始まる
+
+  function phaseAt(pos) {
+    let t = ((pos % CYCLE_LEN) + CYCLE_LEN) % CYCLE_LEN;
+    for (const p of PHASES) {
+      if (t < p.dur) return p.id;
+      t -= p.dur;
+    }
+    return 'night';
+  }
+
+  /* ---------- ねがいぼし ----------
+     ときどき空に現れる小さな奇跡。タップでまとめて獲得。 */
+  const WISH_MIN_WAIT = 45, WISH_MAX_WAIT = 90; // 出現間隔（秒）
+  const WISH_LIFE = 6;                          // 出現している時間（秒）
+  const WISH_HARVEST_SEC = 45;                  // 自動生産の何秒ぶんか
+
   /* ---------- 発展段階 ---------- */
   const STAGES = [
     { th: 0,  name: '泥のアジト' },
@@ -59,6 +85,60 @@
     5: '｛夜|よる｝の｛帳|とばり｝が｛下|お｝りる｛瞬間|しゅんかん｝、｛街灯網|がいとうもう｝が｛波打|なみう｝つように｛一斉|いっせい｝に｛灯|とも｝った。かつてたった｛一|ひと｝つのランタンだった｛光|ひかり｝が、いま、｛街全体|まちぜんたい｝を｛照|て｝らしている。｛爽|さわ｝やかな｛風|かぜ｝が、｛街|まち｝を｛吹|ふ｝き｛抜|ぬ｝けていった。',
   };
 
+  /* ---------- ものがたり図鑑 ----------
+     条件をみたすと1ページずつ解放される読み物（各150字以内）。
+     リーザの死の経緯・詳細、恋愛要素は書かない。 */
+  const STORYBOOK = [
+    {
+      id: 'world', title: 'この世界',
+      hint: 'はじめから よめる',
+      cond: () => true,
+      text: 'この｛世界|せかい｝では、もって生まれた｛魔力|まりょく｝の強さで、人のえらさが決まるという。つよい光の家に生まれた子は えらく、よわい光の子は 下を向いて歩く。……でも、ほんとうに そうなのかな?',
+    },
+    {
+      id: 'rein', title: 'レイン',
+      hint: 'ランタン工房が Lv3に なると…',
+      cond: s => s.lv.lantern >= 3,
+      text: '｛魔力|まりょく｝が よわいと わらわれた｛少年|しょうねん｝。けれど「よく見て、ためして、｛記録|きろく｝する」ことだけは、だれにも まけなかった。みんなが むりだと いうことを、レインは ｛何度|なんど｝でも たしかめた。',
+    },
+    {
+      id: 'baruto', title: 'バルト',
+      hint: '市場が Lv3に なると…',
+      cond: s => s.lv.market >= 3,
+      text: 'だれとでも すぐ友だちになれる｛少年|しょうねん｝。ものの ねだんと、人の気もちの プロ。「いい｛商|あきな｝いはな、みんなが ｛笑顔|えがお｝になるんだぜ」が 口ぐせ。',
+    },
+    {
+      id: 'aruno', title: 'アルノ',
+      hint: '学問所が Lv3に なると…',
+      cond: s => s.lv.school >= 3,
+      text: '｛数字|すうじ｝と 星をよむ、もの｛静|しず｝かな｛少年|しょうねん｝。レインの「こうかもしれない」を、たしかな｛数字|すうじ｝で ほんものの｛魔法|まほう｝に変える、たいせつな｛相棒|あいぼう｝。',
+    },
+    {
+      id: 'lanternlight', title: 'ランタンの灯',
+      hint: '街が「開拓の集落」に なると…',
+      cond: s => s.maxStage >= 2,
+      text: 'レインたちには、4人目の 友だちがいた。このランタンは、その子が なによりも ｛大切|たいせつ｝にしていたもの。｛灯|あか｝りを見つめると、なぜだか みんな、やさしい気もちに なれた。',
+    },
+    {
+      id: 'lizaname', title: 'リーザという名前',
+      hint: '街が「灯りの街」に なると…',
+      cond: s => s.maxStage >= 3,
+      text: '街の名前になった｛少女|しょうじょ｝のこと。「どうしてか わからないまま、｛困|こま｝ってしまう人を へらしたい」——それが その子の ゆめだった。街は、その名前と いっしょに ｛育|そだ｝っていく。',
+    },
+    {
+      id: 'clinicsecret', title: '救護院のひみつ',
+      hint: '救護院が Lv5に なると…',
+      cond: s => s.lv.clinic >= 5,
+      text: '｛救護院|きゅうごいん｝に くる人は、みんな どこか ｛安心|あんしん｝した顔になる。リーザの ゆめは、いまも この｛建物|たてもの｝の中で 生きている。だから ここの灯は、すこし やさしい色をしている。',
+    },
+    {
+      id: 'promise', title: '光の都の約束',
+      hint: '街が「光の都リーザ」に なると…',
+      cond: s => s.maxStage >= 5,
+      text: 'ちいさな灯は、街いっぱいの光になった。｛約束|やくそく｝は、はたされた。……でも、街は これからも ｛育|そだ｝っていく。あたらしい朝も、あたらしい夜も、この街の光は もう｛消|き｝えない。',
+    },
+  ];
+
   /* ---------- 施設定義 ---------- */
   const FACILITIES = [
     {
@@ -69,13 +149,13 @@
     },
     {
       id: 'market', name: '｛市場|いちば｝', char: 'baruto',
-      base: { maso: 40, shizai: 0 },
+      base: { maso: 25, shizai: 0 },
       desc: 'バルトの 元気な声が ひびく。もくざいが じどうで集まる',
       stat: lv => 'いま ▤+' + trim1(lv * 0.5) + '/秒',
     },
     {
       id: 'school', name: '｛学問所|がくもんじょ｝', char: 'aruno',
-      base: { maso: 100, shizai: 10 },
+      base: { maso: 70, shizai: 6 },
       desc: 'アルノが 数字と 星をしらべる。タップで集まる ひかりが ふえる',
       stat: lv => 'いま タップ✦+' + (1 + lv),
     },
@@ -153,6 +233,8 @@
     maxStage: 1,       // 到達済みの最高段階
     introSeen: false,  // オープニング「約束」を見たか
     lastResidents: 0,  // 住人トースト用の前回値
+    cyclePos: NIGHT_START, // 昼夜サイクルの位相（秒）
+    pages: [],         // 解放済みの図鑑ページid
     lastSaved: Date.now(),
   };
 
@@ -257,6 +339,7 @@
           win.style.top = (30 + (r * 58) / Math.max(1, rows - 1 || 1) + rng() * 6) + '%';
           win.style.animationDuration = (1.8 + rng() * 2.4) + 's';
           win.style.animationDelay = (-rng() * 3) + 's';
+          win.style.setProperty('--lit-delay', (rng() * 18).toFixed(1) + 's'); // 夕方に順に点灯
           b.appendChild(win);
         }
       }
@@ -306,6 +389,7 @@
       win.style.top = (22 + Math.floor(i / 3) * 22 + rng() * 6) + '%';
       win.style.animationDuration = (1.8 + rng() * 2.4) + 's';
       win.style.animationDelay = (-rng() * 3) + 's';
+      win.style.setProperty('--lit-delay', (rng() * 14).toFixed(1) + 's');
       b.appendChild(win);
     }
   }
@@ -359,6 +443,7 @@
         w.style.top = '34%';
         w.style.animationDuration = (1.4 + rng() * 1.2) + 's';
         w.style.animationDelay = (-rng() * 2) + 's';
+        w.style.setProperty('--lit-delay', (rng() * 12).toFixed(1) + 's');
         s.appendChild(w);
         layer.appendChild(s);
       }
@@ -399,6 +484,7 @@
       p.style.bottom = (9 + rng() * 26) + '%';
       p.style.animationDuration = (2.2 + rng() * 3) + 's';
       p.style.animationDelay = (-rng() * 4) + 's';
+      p.style.setProperty('--lit-delay', (rng() * 18).toFixed(1) + 's');
       box.appendChild(p);
     }
   }
@@ -418,7 +504,7 @@
 
     // 段階アップ演出（flash）の途中で呼ばれてもアニメーションを切らない
     const flashing = cityEl.classList.contains('flash');
-    cityEl.className = 'stage-' + stage + (flashing ? ' flash' : '');
+    cityEl.className = 'stage-' + stage + ' t-' + phaseAt(state.cyclePos) + (flashing ? ' flash' : '');
 
     const stars = $('stars');
     stars.textContent = '';
@@ -455,6 +541,7 @@
       }
       l.style.animationDuration = (1.8 + rng() * 1.6) + 's';
       l.style.animationDelay = (-rng() * 2.5) + 's';
+      l.style.setProperty('--lit-delay', (rng() * 10).toFixed(1) + 's');
       amb.appendChild(l);
     }
     for (let i = 0; i < cfg.sea; i++) {
@@ -464,6 +551,7 @@
       p.style.bottom = (8 + rng() * 30) + '%';
       p.style.animationDuration = (3 + rng() * 4) + 's';
       p.style.animationDelay = (-rng() * 5) + 's';
+      p.style.setProperty('--lit-delay', (rng() * 16).toFixed(1) + 's');
       amb.appendChild(p);
     }
 
@@ -650,10 +738,56 @@
       startOpening();
     });
     wrap.appendChild(replay);
+
+    // ① 街のあゆみ
+    const h1 = document.createElement('div');
+    h1.className = 'zukan-head';
+    h1.textContent = '— 街のあゆみ —';
+    wrap.appendChild(h1);
     for (let s = 2; s <= 5; s++) {
       wrap.appendChild(storyNode(s, state.unlocked.includes(s)));
     }
-    openModal('きろく — 街のあゆみ', wrap);
+
+    // ② ものがたり（条件達成で1ページずつ解放）
+    const h2 = document.createElement('div');
+    h2.className = 'zukan-head';
+    h2.textContent = '— ものがたり —';
+    wrap.appendChild(h2);
+    for (const page of STORYBOOK) {
+      const unlockedPage = state.pages.includes(page.id);
+      const card = document.createElement('div');
+      card.className = 'page-card' + (unlockedPage ? '' : ' page-locked');
+      const title = document.createElement('div');
+      title.className = 'page-title';
+      title.textContent = unlockedPage ? '📖 ' + page.title : '📖 ？？？';
+      const body = document.createElement('div');
+      body.className = 'page-text';
+      if (unlockedPage) {
+        body.appendChild(rubyText(page.text));
+      } else {
+        body.textContent = page.hint;
+      }
+      card.appendChild(title);
+      card.appendChild(body);
+      wrap.appendChild(card);
+    }
+
+    openModal('ずかん', wrap);
+  }
+
+  /* 図鑑ページの解放チェック（silent=trueはロード時の整合用） */
+  function checkPages(silent) {
+    let added = false;
+    for (const page of STORYBOOK) {
+      if (!state.pages.includes(page.id) && page.cond(state)) {
+        state.pages.push(page.id);
+        added = true;
+      }
+    }
+    if (added && !silent) {
+      infoToast('📖 ずかんに あたらしいページ!');
+    }
+    return added;
   }
 
   function showSettingsModal() {
@@ -853,6 +987,7 @@
     }
     checkResidents();
     checkStage();
+    checkPages(false); // 図鑑の新ページ解放チェック
     updateAll();
     save();
   }
@@ -878,6 +1013,92 @@
       speak(chars[s % chars.length]);
     };
     save();
+  }
+
+  /* ============================================================
+     ねがいぼし（昼=光る蝶、夜=流れ星。タップでまとめて獲得）
+     ============================================================ */
+
+  let wishTimer = 0;
+
+  function wishReward() {
+    // その時点の自動生産45秒ぶん（序盤は固定15）
+    return {
+      maso: Math.max(15, Math.floor(masoPerSec() * WISH_HARVEST_SEC)),
+      shizai: Math.floor(shizaiPerSec() * WISH_HARVEST_SEC),
+    };
+  }
+
+  function scheduleWish() {
+    clearTimeout(wishTimer);
+    const wait = (WISH_MIN_WAIT + Math.random() * (WISH_MAX_WAIT - WISH_MIN_WAIT)) * 1000;
+    wishTimer = setTimeout(spawnWish, wait);
+  }
+
+  function spawnWish() {
+    // 開いている画面でだけ現れる（オープニング中・非表示タブは見送り）
+    if (document.visibilityState === 'hidden' || !openingEl.hidden) {
+      scheduleWish();
+      return;
+    }
+    const layer = $('wish-layer');
+    layer.textContent = '';
+    const phase = phaseAt(state.cyclePos);
+    const isStar = phase === 'night' || phase === 'dusk';
+
+    const w = document.createElement('button');
+    w.type = 'button';
+    w.className = 'wish ' + (isStar ? 'wish-star' : 'wish-butterfly');
+    w.setAttribute('aria-label', 'ねがいぼし');
+    w.style.left = (10 + Math.random() * 72) + '%';
+    w.style.top = (8 + Math.random() * 30) + '%';
+    const core = document.createElement('span');
+    core.className = 'wish-core';
+    w.appendChild(core);
+
+    let caught = false;
+    w.addEventListener('pointerdown', e => {
+      e.stopPropagation(); // 街タップと二重取りにしない
+      if (caught) return;
+      caught = true;
+      const r = wishReward();
+      state.maso += r.maso;
+      state.shizai += r.shizai;
+
+      // 獲得の輝き＋フロート表示
+      const rect = cityEl.getBoundingClientRect();
+      const x = e.clientX - rect.left, y = e.clientY - rect.top;
+      const num = document.createElement('span');
+      num.className = 'tap-num wish-num';
+      num.textContent = '+' + fmt(r.maso) + ' ✦' + (r.shizai > 0 ? '  +' + fmt(r.shizai) + ' ▤' : '');
+      num.style.left = x + 'px';
+      num.style.top = y + 'px';
+      tapLayer.appendChild(num);
+      for (let i = 0; i < 5; i++) {
+        const sp = document.createElement('span');
+        sp.className = 'spark bright';
+        sp.style.left = (x + (Math.random() * 36 - 18)) + 'px';
+        sp.style.top = (y + (Math.random() * 16 - 8)) + 'px';
+        sp.style.setProperty('--dx', (Math.random() * 64 - 32).toFixed(0) + 'px');
+        tapLayer.appendChild(sp);
+        setTimeout(() => sp.remove(), 1500);
+      }
+      setTimeout(() => num.remove(), 1100);
+
+      w.remove();
+      updateAll();
+      save();
+      scheduleWish();
+    });
+
+    layer.appendChild(w);
+    setTimeout(() => {
+      if (!caught) {
+        w.classList.add('gone');
+        setTimeout(() => w.remove(), 600);
+        scheduleWish();
+      }
+    }, WISH_LIFE * 1000);
   }
 
   /* ============================================================
@@ -914,11 +1135,13 @@
     tapLayer.appendChild(num);
 
     // 小さな光の粒が1〜3個ふわっと舞い上がる（同時表示数を制限）
+    // 夜のあいだは、粒がわずかに華やぐ
+    const nightly = phaseAt(state.cyclePos) === 'night';
     if (tapLayer.querySelectorAll('.spark').length < 18) {
       const n = 1 + Math.floor(Math.random() * 3);
       for (let i = 0; i < n; i++) {
         const sp = document.createElement('span');
-        sp.className = 'spark';
+        sp.className = 'spark' + (nightly ? ' bright' : '');
         sp.style.left = (x + (Math.random() * 30 - 15)) + 'px';
         sp.style.top = (y + (Math.random() * 12 - 6)) + 'px';
         sp.style.setProperty('--dx', (Math.random() * 56 - 28).toFixed(0) + 'px');
@@ -955,6 +1178,13 @@
         ? 'ひかりを 集めよう（街をタップ!）'
         : 'ランタン工房を たてよう';
     }
+    // 2種類以上たてられるときは、選択を奪わない問いかけにする
+    let affordable = 0;
+    for (const fac of FACILITIES) {
+      const c = costOf(fac, state.lv[fac.id]);
+      if (state.maso >= c.maso && state.shizai >= c.shizai) affordable++;
+    }
+    if (affordable >= 2) return 'つぎは どれを そだてる?';
     if (state.lv.market === 0) return '市場を たてよう';
     if (state.maxStage >= 2 && state.lv.school === 0) return '学問所を たてよう（もくざいが いる）';
     if (state.maxStage >= 3 && state.lv.clinic === 0) return '救護院を たてよう';
@@ -998,6 +1228,17 @@
     updateGoal();
   }
 
+  /* 昼夜サイクル：位相を進め、変わり目でクラスを切り替える
+     （色の変化そのものはCSS transitionが約30秒かけて行う） */
+  let appliedPhase = '';
+  function updatePhase() {
+    const p = phaseAt(state.cyclePos);
+    if (p === appliedPhase) return;
+    appliedPhase = p;
+    for (const ph of PHASES) cityEl.classList.remove('t-' + ph.id);
+    cityEl.classList.add('t-' + p);
+  }
+
   let lastTick = Date.now();
   function tick() {
     const now = Date.now();
@@ -1006,6 +1247,8 @@
     if (dt <= 0) return;
     if (dt > 300) dt = 300; // バックグラウンド復帰時の暴走防止
 
+    state.cyclePos = (state.cyclePos + dt) % CYCLE_LEN;
+    updatePhase();
     state.maso += masoPerSec() * dt;
     state.shizai += shizaiPerSec() * dt;
     updateAll();
@@ -1030,6 +1273,8 @@
         maxStage: state.maxStage,
         introSeen: state.introSeen,
         lastResidents: state.lastResidents,
+        cyclePos: state.cyclePos,
+        pages: state.pages,
         lastSaved: state.lastSaved,
       }));
     } catch (e) { /* プライベートモード等で保存できない場合は無視 */ }
@@ -1051,6 +1296,15 @@
         : [];
       state.maxStage = Math.min(5, Math.max(1, Math.floor(Number(d.maxStage) || 1)));
       state.introSeen = d.introSeen !== false; // 既存セーブはオープニングを再表示しない
+      // 昼夜サイクルは保存した位相の続きから流れる
+      const pos = Number(d.cyclePos);
+      state.cyclePos = Number.isFinite(pos)
+        ? ((pos % CYCLE_LEN) + CYCLE_LEN) % CYCLE_LEN
+        : NIGHT_START;
+      const validIds = STORYBOOK.map(p => p.id);
+      state.pages = Array.isArray(d.pages)
+        ? d.pages.filter(id => validIds.includes(id))
+        : [];
       state.lastSaved = Number(d.lastSaved) || Date.now();
       // 整合性：保存時より発展度が高ければ静かに段階を合わせる
       const s = stageFor(devPoints());
@@ -1101,17 +1355,23 @@
      ============================================================ */
 
   const hadSave = load();
+  checkPages(true); // 条件を満たしているページは静かに解放（「この世界」含む）
   shown.maso = state.maso;
   shown.shizai = state.shizai;
   buildFacilityList();
   renderCity();
+  updatePhase();
   updateAll();
+  scheduleWish();
   if (state.maso > 0 || totalLv() > 0) {
     tapHint.classList.add('hidden');
   }
   if (!hadSave && !state.introSeen) {
     startOpening(); // オープニング「約束」（初回のみ）
   }
+
+  // テスト用フック（ゲームプレイには影響しない）
+  window.__lizaDev = { spawnWish, phaseAt, wishReward };
 
   setInterval(tick, 100);
   setInterval(save, 5000);
