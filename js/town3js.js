@@ -41,11 +41,26 @@
      脱色されていた。1.0に戻し「はっきりした色のまま柔らかい」へ */
   const EXPOSURE = 1.0;
 
+  /* レイン（街に常駐する3Dキャラ。すべて調整しやすい定数に） */
+  const CHAR = {
+    url: 'assets/models/rein.glb',
+    x: -1.9, z: -2.0,    // ランタン工房(-1.9,-3.2)の手前
+    y: 0.1,              // 足の接地高さ（建物基部と同じ）
+    yawDeg: 135,         // 正面をカメラ（+x+z 方向）へ向ける
+    scale: 0.62,         // 民家(高さ0.55〜0.75)と並ぶ人の大きさ
+    texSize: 1024,       // 2048→1024へ縮小
+    armDeg: 80,          // 上腕を下げる角度（検証値）
+    elbowDeg: 14,        // 前腕の前曲げ（検証値）
+    breathAmp: 0.012,    // 待機の上下動（呼吸）
+  };
+
   const T = {
     ready: false,
-    CAM, SHADOW, EXPOSURE,
+    CAM, SHADOW, EXPOSURE, CHAR,
     init, render, setCycle, animateFacility, lanternPoint, spawnWish,
     quantizeSunPos, // テスト用：影の角度更新の離散化ロジック
+    loadCharacter,  // テスト用：失敗時に安全にfalseを返すこと
+    charBounce,
   };
   window.LizaTown3D = T;
 
@@ -61,6 +76,9 @@
   let wish = null;
   let lanternHeadMesh = null;
   let onFacilityTapCb = null;
+  let charRoot = null;       // レイン本体（読み込めた場合のみ）
+  let charBounceT0 = 0;      // ジャンプ反応の開始時刻
+  let lastCharTap = 0;       // タップ反応のレート制限
 
   /* 共有ジオメトリ */
   let GEO = null;
@@ -149,6 +167,7 @@
       host.addEventListener('pointerdown', onPointerDown, true);
 
       T.ready = true;
+      loadCharacter(); // レイン（任意・失敗しても街は完全に正常）
       animate();
       return true;
     } catch (e) {
@@ -603,6 +622,136 @@
         }
       }
     }
+    // レインをタップ（付近）したら軽くジャンプ（連打はレート制限）
+    if (charRoot) {
+      const now = Date.now();
+      if (now - lastCharTap > 600 && raycaster.intersectObject(charRoot, true).length > 0) {
+        lastCharTap = now;
+        charBounce();
+      }
+    }
+  }
+
+  /* ============================================================
+     レイン（街に常駐する3Dキャラ）
+     ・読み込み／WebGL失敗時は何もせず、街は完全に正常表示される
+     ・マテリアルは街と同じ MeshLambertMaterial（同じ光だけで陰影を簡素化）
+       にし、写実的なテカリ・陰影を抑えて街と馴染ませる
+     ・昼夜サイクルの光（hemi/sun）に応じて色が街と一緒に変化する
+     ============================================================ */
+  function loadCharacter() {
+    try {
+      if (typeof THREE === 'undefined' || !T.ready) return false;
+      if (typeof THREE.GLTFLoader !== 'function') return false; // ローダー未読込なら街のみ
+      const loader = new THREE.GLTFLoader();
+      loader.load(CHAR.url, onCharLoaded, undefined, () => {
+        /* 読み込み失敗：街はそのまま正常。キャラだけ出ない */
+      });
+      return true;
+    } catch (e) {
+      return false; // 何があっても街の描画は止めない
+    }
+  }
+
+  /* テクスチャを texSize 四方へ縮小（2048→1024） */
+  function downscaleTexture(tex, size) {
+    try {
+      if (!tex || !tex.image) return tex;
+      const c = document.createElement('canvas');
+      c.width = c.height = size;
+      c.getContext('2d').drawImage(tex.image, 0, 0, size, size);
+      const nt = new THREE.CanvasTexture(c);
+      nt.flipY = tex.flipY;
+      nt.encoding = THREE.sRGBEncoding;
+      nt.wrapS = tex.wrapS; nt.wrapT = tex.wrapT;
+      return nt;
+    } catch (e) { return tex; }
+  }
+
+  /* ボーンのワールド向き fromDir を toDir へ向ける（親回転を打ち消して適用）。
+     表示回転・左右の鏡像配置に依存しない堅牢な方式（test-glbで検証済み）。 */
+  function alignWorld(bone, fromDir, toDir) {
+    const pq = new THREE.Quaternion();
+    if (bone.parent) bone.parent.getWorldQuaternion(pq);
+    const q = new THREE.Quaternion().setFromUnitVectors(
+      fromDir.clone().normalize(), toDir.clone().normalize());
+    bone.quaternion.premultiply(pq).premultiply(q).premultiply(pq.clone().invert());
+  }
+
+  function poseCharArms(root) {
+    scene.updateMatrixWorld(true);
+    const find = sfx => {
+      let r = null;
+      root.traverse(o => { if ((o.name || '').toLowerCase().endsWith(sfx)) r = o; });
+      return r;
+    };
+    const wp = o => o.getWorldPosition(new THREE.Vector3());
+    for (const s of ['left', 'right']) {
+      const sh = find(s + 'shoulder'), arm = find(s + 'arm'),
+        fore = find(s + 'forearm'), hand = find(s + 'hand');
+      if (!sh || !arm || !hand) continue;
+      const armDir = wp(hand).sub(wp(sh));
+      const horiz = new THREE.Vector3(armDir.x, 0, armDir.z).normalize();
+      // 上腕：真下＋わずかに外（残し角 ≒ 90−armDeg）
+      const out = Math.cos(THREE.MathUtils.degToRad(CHAR.armDeg)) /
+                  Math.max(0.0001, Math.sin(THREE.MathUtils.degToRad(CHAR.armDeg)));
+      const target = horiz.clone().multiplyScalar(out).add(new THREE.Vector3(0, -1, 0));
+      alignWorld(arm, armDir, target);
+      scene.updateMatrixWorld(true);
+      if (fore) {
+        const faDir = wp(hand).sub(wp(fore));
+        const bent = faDir.clone().applyAxisAngle(horiz, THREE.MathUtils.degToRad(CHAR.elbowDeg));
+        alignWorld(fore, faDir, bent);
+        scene.updateMatrixWorld(true);
+      }
+    }
+  }
+
+  function onCharLoaded(gltf) {
+    try {
+      const root = gltf.scene;
+      root.scale.setScalar(CHAR.scale);
+      root.position.set(CHAR.x, CHAR.y, CHAR.z);
+      root.rotation.y = THREE.MathUtils.degToRad(CHAR.yawDeg);
+
+      // マテリアルを街と同じ簡略ライティング（Lambert）へ。テカリ・写実陰影を排し、
+      // baseColorの色味だけ残す。テクスチャは1024へ縮小。
+      root.traverse(o => {
+        if (!o.isMesh) return;
+        o.castShadow = false;     // 接地影は別途ブロブで落とす
+        o.receiveShadow = false;
+        const src = o.material;
+        const map = src && src.map ? downscaleTexture(src.map, CHAR.texSize) : null;
+        const lm = new THREE.MeshLambertMaterial({
+          map,
+          color: map ? 0xffffff : 0xdcc6a8,
+          skinning: !!o.isSkinnedMesh, // r128はskinnedに skinning フラグが必要
+        });
+        o.material = lm;
+      });
+
+      poseCharArms(root); // 左右対称の腕下げ（検証値）
+
+      // 街の建物と同質の接地影（楕円ブロブを1つ、足元へ）
+      const shadow = new THREE.Mesh(geos().disc, new THREE.MeshBasicMaterial({
+        color: 0x2a2018, transparent: true, opacity: 0.22, depthWrite: false,
+      }));
+      shadow.scale.set(0.85, 0.4, 0.7);
+      shadow.position.set(CHAR.x, 0.12, CHAR.z);
+      shadow.renderOrder = -1;
+      scene.add(shadow);
+      root.userData.shadow = shadow;
+
+      scene.add(root);
+      charRoot = root;
+    } catch (e) {
+      // 失敗してもキャラを出さないだけ。街は正常のまま
+      charRoot = null;
+    }
+  }
+
+  function charBounce() {
+    if (charRoot) charBounceT0 = Date.now();
   }
 
   /* ---------- 演出 ---------- */
@@ -612,6 +761,7 @@
     if (id === 'lights') {
       bounces.push({ group: townGroup, t0: Date.now(), soft: true });
     }
+    if (id === 'lantern') charBounce(); // 工房を育てるとレインが小さくジャンプ
   }
 
   function lanternPoint() {
@@ -643,6 +793,13 @@
         s.baseZ);
       s.sprite.material.opacity = 0.4 * (1 - ph);
       s.sprite.scale.setScalar(0.16 + ph * 0.3);
+    }
+    // レイン：呼吸程度のゆっくりした上下動 ＋ 反応のジャンプ
+    if (charRoot) {
+      let y = CHAR.y + Math.sin(t * 1.5) * CHAR.breathAmp;
+      const bp = (now - charBounceT0) / 520;
+      if (bp >= 0 && bp < 1) y += Math.sin(bp * Math.PI) * 0.14;
+      charRoot.position.y = y;
     }
     for (let i = bounces.length - 1; i >= 0; i--) {
       const b = bounces[i];
