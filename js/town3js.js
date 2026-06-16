@@ -22,9 +22,15 @@
   const CAM = {
     elevDeg: 35,      // 俯瞰角
     azimDeg: 45,      // 方位角（盤面の角が手前に来るダイヤモンド配置）
-    viewHeight: 13.6, // 縦に収めるワールド単位（ズーム。小さいほど寄る）
     dist: 28,         // カメラ距離（平行投影では構図に影響しない）
-    lookAtY: 0.8,
+    margin: 0.03,     // 端に意図的に残す最小マージン（3%）
+    // 最悪構成（段階5・全Lv最大・民家上限・全装飾）の「中身」を内包するAABB。
+    // 実測: 建物/民家/装飾の外縁は |x|,|z| ≦ 5.84、最高点 y=4.36、台座下端 -0.90。
+    // 盤面の平らな四隅（±6 の地面）は意図的に画面外へ逃がし、中身を最大化する
+    // （= 三角形のデッドスペースを最小化）。中身を基準にするので段階1〜4も必ず収まる。
+    fitMin: { x: -5.85, y: -0.95, z: -5.85 },
+    fitMax: { x:  5.85, y:  4.5,  z:  5.85 },
+    viewHeight: 13.6, // フィット計算不可時のフォールバック
   };
 
   /* 影（チラつき対策の核心） */
@@ -59,6 +65,7 @@
     CAM, SHADOW, EXPOSURE, CHAR,
     init, render, setCycle, animateFacility, lanternPoint, spawnWish,
     quantizeSunPos, // テスト用：影の角度更新の離散化ロジック
+    fitFrustum,     // テスト用：最悪構成を内包するフレーミング計算
     loadCharacter,  // テスト用：失敗時に安全にfalseを返すこと
     charBounce,
   };
@@ -177,15 +184,49 @@
     }
   }
 
+  /* カメラの右/上ベクトル（純粋計算・THREE非依存でテスト可能） */
+  function camBasis() {
+    const e = CAM.elevDeg * Math.PI / 180, a = CAM.azimDeg * Math.PI / 180;
+    const dir = [-Math.cos(e) * Math.sin(a), -Math.sin(e), -Math.cos(e) * Math.cos(a)]; // 原点へ向く
+    const cross = (u, v) => [u[1]*v[2]-u[2]*v[1], u[2]*v[0]-u[0]*v[2], u[0]*v[1]-u[1]*v[0]];
+    const norm = v => { const m = Math.hypot(v[0], v[1], v[2]); return [v[0]/m, v[1]/m, v[2]/m]; };
+    const right = norm(cross(dir, [0, 1, 0]));
+    const up = norm(cross(right, dir));
+    return { right, up };
+  }
+
+  /* 最悪構成AABBの8隅をビュー空間へ射影し、指定アスペクトで全隅が収まる
+     最小フレーム（viewHeight）と中心(cx,cy)を返す。段階5最大を基準にすれば
+     段階1〜4は必ず内包される（盤面±6は不変、建物高さは段階5が最大）。 */
+  function fitFrustum(aspect) {
+    const { right, up } = camBasis();
+    const dot = (p, b) => p[0]*b[0] + p[1]*b[1] + p[2]*b[2];
+    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+    for (const x of [CAM.fitMin.x, CAM.fitMax.x])
+      for (const y of [CAM.fitMin.y, CAM.fitMax.y])
+        for (const z of [CAM.fitMin.z, CAM.fitMax.z]) {
+          const vx = dot([x, y, z], right), vy = dot([x, y, z], up);
+          if (vx < minX) minX = vx; if (vx > maxX) maxX = vx;
+          if (vy < minY) minY = vy; if (vy > maxY) maxY = vy;
+        }
+    const cx = (minX + maxX) / 2, cy = (minY + maxY) / 2;
+    const halfW = (maxX - minX) / 2 * (1 + CAM.margin);
+    const halfH = (maxY - minY) / 2 * (1 + CAM.margin);
+    const H = Math.max(halfH, halfW / aspect); // 横が収まらなければ縦を広げる
+    return { viewHeight: 2 * H, cx, cy, right, up };
+  }
+
+  const camTarget = { x: 0, y: 0.8, z: 0 }; // THREE非依存（モジュール評価時に落ちない）
+
   function placeCamera() {
     const elev = CAM.elevDeg * Math.PI / 180;
     const azim = CAM.azimDeg * Math.PI / 180;
     const r = CAM.dist;
     camera.position.set(
-      Math.cos(elev) * Math.sin(azim) * r,
-      Math.sin(elev) * r,
-      Math.cos(elev) * Math.cos(azim) * r);
-    camera.lookAt(0, CAM.lookAtY, 0);
+      camTarget.x + Math.cos(elev) * Math.sin(azim) * r,
+      camTarget.y + Math.sin(elev) * r,
+      camTarget.z + Math.cos(elev) * Math.cos(azim) * r);
+    camera.lookAt(camTarget.x, camTarget.y, camTarget.z);
   }
 
   function resize() {
@@ -194,11 +235,17 @@
     const h = host.clientHeight || 300;
     renderer.setSize(w, h);
     const aspect = w / h;
-    const halfH = CAM.viewHeight / 2;
+    const fit = fitFrustum(aspect);
+    // ビュー中心(cx,cy)を画面中心へ合わせる注視点（向きは不変＝右/上ベクトルも不変）
+    camTarget.x = fit.cx * fit.right[0] + fit.cy * fit.up[0];
+    camTarget.y = fit.cx * fit.right[1] + fit.cy * fit.up[1];
+    camTarget.z = fit.cx * fit.right[2] + fit.cy * fit.up[2];
+    const halfH = fit.viewHeight / 2;
     camera.top = halfH;
     camera.bottom = -halfH;
     camera.left = -halfH * aspect;
     camera.right = halfH * aspect;
+    placeCamera();
     camera.updateProjectionMatrix();
   }
 
@@ -568,7 +615,8 @@
       tail.scale.set(1.6, 0.06, 0.06);
       tail.position.x = 0.9;
       grp.add(tail);
-      grp.position.set(2 + Math.random() * 3, 6.5 + Math.random() * 1.5, -4 + Math.random() * 3);
+      // 寄せたフレーム内（上空 y<=4.5）に収め、流れ星として斜めに流れる
+      grp.position.set(1 + Math.random() * 3, 3.2 + Math.random() * 0.9, -3.5 + Math.random() * 3);
     } else {
       for (const sx of [-1, 1]) {
         const wing = new THREE.Mesh(geos().plane, new THREE.MeshBasicMaterial({
@@ -579,7 +627,7 @@
         wing.userData.wing = sx;
         grp.add(wing);
       }
-      grp.position.set(-3 + Math.random() * 6, 3.4 + Math.random() * 1.4, -2 + Math.random() * 3);
+      grp.position.set(-3 + Math.random() * 6, 2.6 + Math.random() * 1.2, -2 + Math.random() * 3);
     }
     grp.userData.isWish = true;
     grp.traverse(o => { o.userData.isWish = true; });
