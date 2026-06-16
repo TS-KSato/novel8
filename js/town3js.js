@@ -24,10 +24,11 @@
     azimDeg: 45,      // 方位角（盤面の角が手前に来るダイヤモンド配置）
     dist: 28,         // カメラ距離（平行投影では構図に影響しない）
     margin: 0.03,     // 端に意図的に残す最小マージン（3%）
+    townFrac: 0.66,   // 街エリアが縦に占める割合（残りは周囲の地形で埋める）
+    vBias: 0.18,      // 街を画面のやや上へ寄せる量（フレーム高さ比）
     // 最悪構成（段階5・全Lv最大・民家上限・全装飾）の「中身」を内包するAABB。
-    // 実測: 建物/民家/装飾の外縁は |x|,|z| ≦ 5.84、最高点 y=4.36、台座下端 -0.90。
-    // 盤面の平らな四隅（±6 の地面）は意図的に画面外へ逃がし、中身を最大化する
-    // （= 三角形のデッドスペースを最小化）。中身を基準にするので段階1〜4も必ず収まる。
+    // 実測: 建物/民家/装飾の外縁は |x|,|z| ≦ 5.84、最高点 y=4.36。
+    // 街はこの範囲を必ず画面内に収め（見切れ禁止）、外側を地形で覆う。
     fitMin: { x: -5.85, y: -0.95, z: -5.85 },
     fitMax: { x:  5.85, y:  4.5,  z:  5.85 },
     viewHeight: 13.6, // フィット計算不可時のフォールバック
@@ -60,9 +61,21 @@
     breathAmp: 0.012,    // 待機の上下動（呼吸）
   };
 
+  /* 地形（画面いっぱいに広がる大地。台座は撤廃）。
+     カメラの「右/奥」方向に沿った大きな板で画面を覆い、奥端を地平線にする。 */
+  const TERRAIN = {
+    width: 96,        // 画面横を覆う幅（カメラ右方向、±48）
+    front: 50,        // カメラ手前への広がり（画面外へフレームアウト）
+    horizon: 14,      // 奥（地平線）までの距離。ここで地面が切れ、上は空（約17%）になる
+    seed: 20240607,   // 自然配置の固定シード（再描画・セーブ復元で同一）
+    ringMin: 8.5,     // 自然要素を撒くドーナツ内径（街を避ける）
+    ringMax: 22,      // 〃 外径（視界内を埋める）
+    trees: 26, hills: 15, water: 2,
+  };
+
   const T = {
     ready: false,
-    CAM, SHADOW, EXPOSURE, CHAR,
+    CAM, SHADOW, EXPOSURE, CHAR, TERRAIN,
     init, render, setCycle, animateFacility, lanternPoint, spawnWish,
     quantizeSunPos, // テスト用：影の角度更新の離散化ロジック
     fitFrustum,     // テスト用：最悪構成を内包するフレーミング計算
@@ -209,10 +222,12 @@
           if (vx < minX) minX = vx; if (vx > maxX) maxX = vx;
           if (vy < minY) minY = vy; if (vy > maxY) maxY = vy;
         }
-    const cx = (minX + maxX) / 2, cy = (minY + maxY) / 2;
+    const cx = (minX + maxX) / 2, cy0 = (minY + maxY) / 2;
     const halfW = (maxX - minX) / 2 * (1 + CAM.margin);
     const halfH = (maxY - minY) / 2 * (1 + CAM.margin);
-    const H = Math.max(halfH, halfW / aspect); // 横が収まらなければ縦を広げる
+    let H = Math.max(halfH, halfW / aspect); // 街がぴったり収まる最小フレーム
+    H = H / CAM.townFrac;                     // 周囲に地形を見せるためズームアウト
+    const cy = cy0 - CAM.vBias * H;           // 注視点を下げ、街を画面のやや上へ
     return { viewHeight: 2 * H, cx, cy, right, up };
   }
 
@@ -311,6 +326,79 @@
     }
   }
 
+  function mulberry32(a) {
+    return function () {
+      a |= 0; a = (a + 0x6D2B79F5) | 0;
+      let t = Math.imul(a ^ (a >>> 15), 1 | a);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+
+  /* 画面いっぱいの大地（カメラの右/奥方向に沿った大きな板）。
+     奥端 = gBack*horizon が地平線になり、その上は空（透過→CSS）。 */
+  function buildGround(P) {
+    const e = CAM.elevDeg * Math.PI / 180, a = CAM.azimDeg * Math.PI / 180;
+    const dir = new THREE.Vector3(-Math.cos(e)*Math.sin(a), -Math.sin(e), -Math.cos(e)*Math.cos(a)).normalize();
+    const gRight = new THREE.Vector3(-dir.z, 0, dir.x).normalize();  // 画面右（水平）
+    const gBack = new THREE.Vector3(dir.x, 0, dir.z).normalize();    // 画面奥＝カメラから遠ざかる側（地平線）
+    const zAxis = new THREE.Vector3().crossVectors(gRight, new THREE.Vector3(0, 1, 0)); // 右手系の第3軸(=-gBack)
+    const depth = TERRAIN.front + TERRAIN.horizon;
+    const ground = new THREE.Mesh(geos().box, matOf(P.grass));
+    ground.quaternion.setFromRotationMatrix(
+      new THREE.Matrix4().makeBasis(gRight, new THREE.Vector3(0, 1, 0), zAxis));
+    ground.scale.set(TERRAIN.width, 0.1, depth);
+    ground.position.copy(gBack.clone().multiplyScalar((TERRAIN.horizon - TERRAIN.front) / 2));
+    ground.position.y = -0.05; // 上面を y=0 に
+    ground.receiveShadow = true;
+    ground.castShadow = false;
+    return { ground, gRight, gBack };
+  }
+
+  /* 街の外側を自然で埋める（木立・低い丘・水辺）。固定シードで決定的。
+     地平線より奥には置かない。 */
+  function addNature(group, gBack, P) {
+    const rng = mulberry32(TERRAIN.seed);
+    const limit = TERRAIN.horizon - 1.5;
+    const backCoord = (x, z) => x * gBack.x + z * gBack.z;
+    for (let i = 0; i < TERRAIN.trees; i++) {
+      const ang = rng() * Math.PI * 2, rad = TERRAIN.ringMin + rng() * (TERRAIN.ringMax - TERRAIN.ringMin);
+      const x = Math.cos(ang) * rad, z = Math.sin(ang) * rad;
+      if (backCoord(x, z) > limit) continue;
+      const g = new THREE.Group();
+      const th = 0.5 + rng() * 0.5;
+      const trunk = new THREE.Mesh(geos().cyl, matOf(P.trunk));
+      trunk.scale.set(0.12, th, 0.12); trunk.position.y = th / 2; trunk.castShadow = false;
+      const lr = 0.5 + rng() * 0.4;
+      const leaf = new THREE.Mesh(geos().sphere, matOf(rng() < 0.5 ? P.leaf : P.leafDark));
+      leaf.scale.set(lr * 2, lr * 2.2, lr * 2); leaf.position.y = th + lr * 0.8; leaf.castShadow = false;
+      g.add(trunk); g.add(leaf);
+      g.position.set(x, 0, z); g.scale.setScalar(0.8 + rng() * 0.7);
+      group.add(g);
+    }
+    for (let i = 0; i < TERRAIN.hills; i++) {
+      const ang = rng() * Math.PI * 2, rad = TERRAIN.ringMin + 2 + rng() * (TERRAIN.ringMax - TERRAIN.ringMin);
+      const x = Math.cos(ang) * rad, z = Math.sin(ang) * rad;
+      if (backCoord(x, z) > limit) continue;
+      const hill = new THREE.Mesh(geos().sphere, matOf(i % 2 ? P.grass : P.grassDark));
+      const r = 1.2 + rng() * 2.2;
+      hill.scale.set(r * 2, 0.4 + rng() * 0.5, r * 2);
+      hill.position.set(x, 0.02, z); hill.receiveShadow = true; hill.castShadow = false;
+      group.add(hill);
+    }
+    for (let i = 0; i < TERRAIN.water; i++) {
+      const ang = (i ? 2.3 : 0.7) + rng() * 0.5, rad = 12 + rng() * 9;
+      const x = Math.cos(ang) * rad, z = Math.sin(ang) * rad;
+      if (backCoord(x, z) > limit) continue;
+      const water = new THREE.Mesh(geos().disc, new THREE.MeshLambertMaterial({
+        color: P.water, emissive: 0x2a4a66, emissiveIntensity: 0.2,
+      }));
+      const r = 2 + rng() * 2;
+      water.scale.set(r * 2, 1, r * 1.4); water.position.set(x, 0.04, z); water.castShadow = false;
+      group.add(water);
+    }
+  }
+
   function render(data) {
     if (!T.ready || !window.LizaTownModel) return;
     const model = window.LizaTownModel.buildTownModel(data);
@@ -320,31 +408,17 @@
     windows = []; flags = []; smokes = []; facGroups = {};
     townGroup = new THREE.Group();
 
-    /* 島型ボード（台座の厚みでジオラマ感） */
     const S = model.board.size;
 
-    /* 接地影: 台座の真下に薄い楕円。置物感を締める */
-    const contact = new THREE.Mesh(geos().disc, new THREE.MeshBasicMaterial({
-      color: 0x2a2018, transparent: true, opacity: 0.18, depthWrite: false,
-    }));
-    contact.scale.set(S * 1.45, 0.4, S * 1.2); // 楕円
-    contact.position.y = -model.board.thickness - 0.06;
-    townGroup.add(contact);
+    /* 画面いっぱいに広がる大地（台座は撤廃）。カメラの右/奥方向に沿った
+       大きな板で画面を覆い、手前・左右は画面外へ逃がし、奥端を地平線にする。 */
+    const gb = buildGround(P);
+    townGroup.add(gb.ground);
 
-    const base = new THREE.Mesh(geos().box, matOf(P.baseSide));
-    base.scale.set(S, model.board.thickness, S);
-    base.position.y = -model.board.thickness / 2;
-    base.receiveShadow = true;
-    townGroup.add(base);
+    /* 街の外側を自然（木立・低い丘・水辺）で画面端まで埋める（固定シード） */
+    addNature(townGroup, gb.gBack, P);
 
-    /* 地面ベース＝しっかりした明るい草色（画面の50-60%を占める基調色） */
-    const top = new THREE.Mesh(geos().box, matOf(P.grass));
-    top.scale.set(S, 0.1, S);
-    top.position.y = 0.0;
-    top.receiveShadow = true;
-    townGroup.add(top);
-
-    /* 土の区画（クリームベージュ）と草の丘で地面に構造を与える */
+    /* 街エリアの土の区画・草の丘（中心の彩り。配置は街エリア内に限定） */
     const rngP = (s => () => (s = (s * 16807) % 2147483647) / 2147483647)(model.stage * 99 + 7);
     for (let i = 0; i < model.mounds; i++) {
       const isDirt = i % 3 === 2;
