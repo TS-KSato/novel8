@@ -847,17 +847,31 @@ rt { font-size: 0.55em; opacity: 0.8; letter-spacing: 0; }
 }
 .toast.info { border-color: rgba(200, 120, 30, 0.55); }
 
-/* 吹き出し：角丸＋キャラ色の縁取り。顔は描かず紋章で表現 */
+/* 吹き出し：角丸＋キャラ色の縁取り。顔アイコン（無ければ紋章にフォールバック） */
 .toast.voice .emblem {
-  width: 28px; height: 28px;
+  width: 44px; height: 44px;
   border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 14px;
+  font-size: 18px;
   flex-shrink: 0;
+  overflow: hidden;
   background: rgba(122, 90, 50, 0.08);
 }
+/* 顔PNG：円形にクロップ。紋章の上に重ね、読み込めたら前面表示。失敗なら紋章 */
+.emblem { position: relative; }
+.emblem .face-img {
+  position: absolute; inset: 0;
+  width: 100%; height: 100%;
+  object-fit: cover;
+  border-radius: 50%;
+  display: block;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+.emblem.has-face .face-img { opacity: 1; }
+.emblem.has-face { background: none; }
 .toast.voice .voice-body { display: flex; flex-direction: column; min-width: 0; }
 .toast.voice .voice-name { font-size: 10px; font-weight: bold; letter-spacing: 1px; }
 .toast.v-rein   { border-color: var(--c-rein); }
@@ -1288,6 +1302,35 @@ rt { font-size: 0.55em; opacity: 0.8; letter-spacing: 0; }
 .page-locked .page-title { color: var(--ink-dim); }
 .page-locked .page-text { color: var(--ink-dim); font-size: 11px; }
 
+/* キャラページ：立ち絵＋テキストの横並び（縦画面で見やすく） */
+.page-card.page-char { display: flex; gap: 12px; align-items: flex-start; }
+.page-textcol { flex: 1; min-width: 0; }
+.page-portrait {
+  flex: 0 0 40%;
+  max-width: 150px;
+  aspect-ratio: 768 / 1024; /* 立ち絵の縦長比を保つ */
+  border-radius: 12px;
+  overflow: hidden;
+  background: rgba(122, 90, 50, 0.06);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.portrait-img {
+  width: 100%; height: 100%;
+  object-fit: contain;
+  display: block;
+  opacity: 0;
+  transition: opacity 0.5s ease; /* 解放時にふわっと現れる */
+}
+.page-portrait.shown .portrait-img { opacity: 1; }
+.page-portrait.portrait-locked {
+  font-size: 48px;
+  font-weight: bold;
+  color: var(--ink-dim);
+  border: 2px dashed rgba(122, 90, 50, 0.3);
+}
+
 /* ============================================================
    街のおねがい（依頼システム）
    ============================================================ */
@@ -1359,7 +1402,20 @@ rt { font-size: 0.55em; opacity: 0.8; letter-spacing: 0; }
   padding: 11px 13px;
   margin-bottom: 12px;
 }
-.quest-from { font-size: 10px; font-weight: bold; color: #a06a10; letter-spacing: 1px; }
+.quest-from { font-size: 10px; font-weight: bold; color: #a06a10; letter-spacing: 1px;
+  display: flex; align-items: center; gap: 7px; }
+/* 依頼主の顔アイコン（仲間のみ。無ければ紋章フォールバック） */
+.quest-face {
+  width: 34px; height: 34px;
+  border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 15px; overflow: hidden; flex-shrink: 0;
+  background: rgba(122, 90, 50, 0.08);
+}
+.quest-face .face-img { width: 100%; height: 100%; object-fit: cover; border-radius: 50%; display: block; }
+.quest-face.v-rein { border: 1.5px solid var(--c-rein); }
+.quest-face.v-baruto { border: 1.5px solid var(--c-baruto); }
+.quest-face.v-aruno { border: 1.5px solid var(--c-aruno); }
 .quest-title { font-size: 14px; font-weight: bold; color: var(--ink); margin: 3px 0; }
 .quest-note { font-size: 11.5px; color: var(--ink-soft); margin-bottom: 6px; }
 .quest-prog { font-size: 12px; font-weight: bold; color: #8a5410; margin-bottom: 6px; }

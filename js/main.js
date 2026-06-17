@@ -196,6 +196,7 @@
   const VOICES = {
     rein: {
       name: 'レイン', cls: 'v-rein', emblem: '🕯',
+      face: 'assets/portraits/rein_face.png',
       lines: [
         '……うん、いい感じだ',
         '確かめながら、進もう',
@@ -207,6 +208,7 @@
     },
     baruto: {
       name: 'バルト', cls: 'v-baruto', emblem: '⚖',
+      face: 'assets/portraits/bart_face.png',
       lines: [
         'よっしゃ、商売繁盛!',
         '人が集まりゃ街は育つぜ!',
@@ -217,6 +219,7 @@
     },
     aruno: {
       name: 'アルノ', cls: 'v-aruno', emblem: '✒',
+      face: 'assets/portraits/arno_face.png',
       lines: [
         '記録しておきます',
         '数字は嘘をつきません',
@@ -228,6 +231,20 @@
   };
   const FIRST_BUILD_LINE = { char: 'rein', text: '……うん、いい感じだ。始まりの一歩だね' };
   const FIRST_RESIDENT_LINE = { char: 'baruto', text: 'お、初めての住人だ! 賑やかになるぜ!' };
+
+  /* 図鑑キャラページの立ち絵（768×1024・透過）。ページidをキーにする。 */
+  const FULL_PORTRAITS = {
+    rein:   'assets/portraits/rein_full.png',
+    baruto: 'assets/portraits/bart_full.png',
+    aruno:  'assets/portraits/arno_full.png',
+  };
+
+  /* 顔アイコン画像のプリロード（吹き出しのチラつき防止。失敗は無視） */
+  function preloadFaces() {
+    for (const id in VOICES) {
+      if (VOICES[id].face) { const im = new Image(); im.src = VOICES[id].face; }
+    }
+  }
 
   /* ---------- 住人の節目（職業＋一言） ---------- */
   const RESIDENT_MILESTONES = [
@@ -702,14 +719,30 @@
     return t;
   }
 
-  /* 仲間の一言（吹き出し。顔は描かず、キャラ色と紋章で表現） */
+  /* 顔アイコン要素：顔PNGを円形表示。読み込み失敗時は紋章にフォールバック。 */
+  function faceEl(charId) {
+    const v = VOICES[charId];
+    const em = document.createElement('span');
+    em.className = 'emblem';
+    em.textContent = v.emblem; // 背面の紋章（画像が出れば前面が覆う／失敗なら見える）
+    if (v.face) {
+      const img = new Image();
+      img.className = 'face-img';
+      img.alt = v.name;
+      img.addEventListener('load', () => em.classList.add('has-face'));
+      img.addEventListener('error', () => img.remove()); // 失敗＝紋章のまま
+      img.src = v.face;
+      em.appendChild(img); // 即DOMへ。読み込み完了までCSSで非表示
+    }
+    return em;
+  }
+
+  /* 仲間の一言（吹き出し。顔アイコン＋キャラ色の縁取り。顔は左、台詞は右） */
   function speak(charId, line) {
     const v = VOICES[charId];
     if (!v) return;
     const wrap = document.createDocumentFragment();
-    const em = document.createElement('span');
-    em.className = 'emblem';
-    em.textContent = v.emblem;
+    const em = faceEl(charId);
     const body = document.createElement('span');
     body.className = 'voice-body';
     const name = document.createElement('span');
@@ -829,8 +862,32 @@
     wrap.appendChild(h2);
     for (const page of STORYBOOK) {
       const unlockedPage = state.pages.includes(page.id);
+      const portrait = FULL_PORTRAITS[page.id]; // レイン/バルト/アルノのみ
       const card = document.createElement('div');
-      card.className = 'page-card' + (unlockedPage ? '' : ' page-locked');
+      card.className = 'page-card' + (unlockedPage ? '' : ' page-locked') +
+        (portrait ? ' page-char' : '');
+
+      // キャラページ：立ち絵（解放で出現。未解放は「？」シルエット）
+      if (portrait) {
+        const fig = document.createElement('div');
+        fig.className = 'page-portrait';
+        if (unlockedPage) {
+          const img = new Image();
+          img.className = 'portrait-img';
+          img.alt = page.title;
+          img.addEventListener('load', () => { fig.classList.add('shown'); });
+          img.addEventListener('error', () => { fig.remove(); }); // 失敗＝テキストのみ
+          img.src = portrait;
+          fig.appendChild(img);
+        } else {
+          fig.classList.add('portrait-locked');
+          fig.textContent = '？';
+        }
+        card.appendChild(fig);
+      }
+
+      const titleWrap = document.createElement('div');
+      titleWrap.className = 'page-textcol';
       const title = document.createElement('div');
       title.className = 'page-title';
       title.textContent = unlockedPage ? '📖 ' + page.title : '📖 ？？？';
@@ -841,8 +898,9 @@
       } else {
         body.textContent = page.hint;
       }
-      card.appendChild(title);
-      card.appendChild(body);
+      titleWrap.appendChild(title);
+      titleWrap.appendChild(body);
+      card.appendChild(titleWrap);
       wrap.appendChild(card);
     }
 
@@ -1385,7 +1443,17 @@
       card.className = 'quest-card';
       const head = document.createElement('div');
       head.className = 'quest-from';
-      head.textContent = tpl.from;
+      // 依頼主が仲間（レイン/バルト/アルノ）なら顔アイコンを添える
+      const fromChar = tpl.speaker ||
+        Object.keys(VOICES).find(k => VOICES[k].name === tpl.from);
+      if (fromChar) {
+        const f = faceEl(fromChar);
+        f.classList.add('quest-face', VOICES[fromChar].cls);
+        head.appendChild(f);
+      }
+      const fromName = document.createElement('span');
+      fromName.textContent = tpl.from;
+      head.appendChild(fromName);
       const title = document.createElement('div');
       title.className = 'quest-title';
       title.textContent = tpl.title;
@@ -1744,6 +1812,7 @@
   $('quest-board-btn').addEventListener('click', showQuestModal);
   scheduleWish();
   scheduleQuestCheck();
+  preloadFaces();
   if (state.maso > 0 || totalLv() > 0) {
     tapHint.classList.add('hidden');
   }
