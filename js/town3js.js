@@ -717,6 +717,28 @@
     scene.add(townGroup);
   }
 
+  /* 計測用フック（test-cycle.html 専用）。指定 pos でライトを適用して
+     1フレーム描画し、地面（画面手前下部）の実ピクセル輝度を読み戻す。 */
+  function sampleGround(pos) {
+    if (!T.ready) return null;
+    setCycle(pos, 240);
+    applyCycle(Date.now());
+    renderer.render(scene, camera);
+    const gl = renderer.getContext();
+    const cw = renderer.domElement.width, ch = renderer.domElement.height;
+    const n = 6, px = new Uint8Array(4);
+    let r = 0, g = 0, b = 0, cnt = 0;
+    for (let i = 0; i < n; i++) {
+      const sx = Math.floor(cw * (0.35 + 0.3 * i / n)); // 手前中央の地面
+      const sy = Math.floor(ch * 0.12);                  // GL原点は下＝画面下部（手前の地面）
+      gl.readPixels(sx, sy, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, px);
+      r += px[0]; g += px[1]; b += px[2]; cnt++;
+    }
+    r /= cnt; g /= cnt; b /= cnt;
+    return { r, g, b, lum: 0.2126 * r + 0.7152 * g + 0.0722 * b };
+  }
+  T.__sampleGround = sampleGround;
+
   function buildParts(parts) {
     const grp = new THREE.Group();
     for (const p of parts) {
@@ -741,11 +763,15 @@
      彩度が抜けるため、昼の強度は hemi+sun ≒ 1.25 以下に抑える */
   const KEYS = [
     // t(秒), 霞色, 太陽色, 太陽強さ, 仰角(deg), 半球光(空/地/強さ)
-    { t: 0,   sky: 0xdfe9f6, sunC: 0xffe6c2, sunI: 0.42, elev: 22, hemiS: 0xf0f5fb, hemiG: 0xe8d8ba, hemiI: 0.85 },
-    { t: 85,  sky: 0xd5e7f8, sunC: 0xfff4e2, sunI: 0.45, elev: 60, hemiS: 0xf6fafd, hemiG: 0xecdcc0, hemiI: 0.88 },
-    { t: 145, sky: 0xf6cfa6, sunC: 0xffb878, sunI: 0.40, elev: 16, hemiS: 0xf2c59c, hemiG: 0xcaa886, hemiI: 0.66 },
-    { t: 205, sky: 0x18213f, sunC: 0x93a6dc, sunI: 0.10, elev: 45, hemiS: 0x2e3f70, hemiG: 0x20203a, hemiI: 0.30 },
-    { t: 240, sky: 0xdfe9f6, sunC: 0xffe6c2, sunI: 0.42, elev: 22, hemiS: 0xf0f5fb, hemiG: 0xe8d8ba, hemiI: 0.85 },
+    // 重要: 時刻は main.js の PHASES と一致させる（morning0-50/day50-120/
+    // dusk120-170/night170-240）。夜(170-240)は全域で暗く保ち、夜明け前(240=0)も薄暗く、
+    // 明るくなるのは morning(0-50) で行う。これで「夜なのに地面が明るい」を解消する。
+    { t: 0,   sky: 0x2b3b66, sunC: 0xc7d2ee, sunI: 0.18, elev: 14, hemiS: 0x46567e, hemiG: 0x33344a, hemiI: 0.36 },
+    { t: 50,  sky: 0xd5e7f8, sunC: 0xfff4e2, sunI: 0.45, elev: 55, hemiS: 0xf6fafd, hemiG: 0xecdcc0, hemiI: 0.88 },
+    { t: 120, sky: 0xd9e6f4, sunC: 0xfff0d8, sunI: 0.42, elev: 40, hemiS: 0xf2f6fb, hemiG: 0xe8d8ba, hemiI: 0.84 },
+    { t: 170, sky: 0x52456c, sunC: 0xd88a58, sunI: 0.16, elev: 8,  hemiS: 0x6a5a7e, hemiG: 0x44384e, hemiI: 0.30 },
+    { t: 205, sky: 0x141b38, sunC: 0x7e94cc, sunI: 0.07, elev: 45, hemiS: 0x1e2a58, hemiG: 0x12122a, hemiI: 0.18 },
+    { t: 240, sky: 0x2b3b66, sunC: 0xc7d2ee, sunI: 0.18, elev: 14, hemiS: 0x46567e, hemiG: 0x33344a, hemiI: 0.36 },
   ];
   T.KEYS = KEYS;
 
