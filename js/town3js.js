@@ -109,6 +109,7 @@
   let charBounceT0 = 0;      // ジャンプ反応の開始時刻
   let lastCharTap = 0;       // タップ反応のレート制限
   let waterMeshes = [];      // 水面（ゆらぎアニメ用）
+  let glows = [];            // 灯りのにじみ（加算グロー・夜に点灯）
 
   /* 共有ジオメトリ */
   let GEO = null;
@@ -132,6 +133,42 @@
       matCache[color] = new THREE.MeshLambertMaterial({ color });
     }
     return matCache[color];
+  }
+
+  /* 加算グロー用の柔らかい円形テクスチャ（一度だけ生成）。
+     2D非対応環境では null（その場合グローは付かないが描画は正常）。 */
+  let glowTex; // undefined=未生成, null=不可
+  function glowTexture() {
+    if (glowTex !== undefined) return glowTex;
+    glowTex = null;
+    try {
+      const c = document.createElement('canvas');
+      c.width = c.height = 64;
+      const ctx = c.getContext && c.getContext('2d');
+      if (ctx) {
+        const g = ctx.createRadialGradient(32, 32, 0, 32, 32, 32);
+        g.addColorStop(0, 'rgba(255,255,255,1)');
+        g.addColorStop(0.4, 'rgba(255,240,200,0.55)');
+        g.addColorStop(1, 'rgba(255,220,150,0)');
+        ctx.fillStyle = g; ctx.fillRect(0, 0, 64, 64);
+        glowTex = new THREE.CanvasTexture(c);
+      }
+    } catch (e) { glowTex = null; }
+    return glowTex;
+  }
+
+  /* 灯りのにじみ（加算ブレンドのスプライト）。夜に opacity が立つ。 */
+  function addGlow(group, x, y, z, scale, color, base) {
+    const tex = glowTexture();
+    if (!tex) return; // テクスチャ不可なら付けない（描画は正常）
+    const sp = new THREE.Sprite(new THREE.SpriteMaterial({
+      map: tex, color: color, transparent: true, opacity: 0,
+      blending: THREE.AdditiveBlending, depthWrite: false,
+    }));
+    sp.scale.setScalar(scale);
+    sp.position.set(x, y, z);
+    group.add(sp);
+    glows.push({ sprite: sp, base: base != null ? base : 0.9 });
   }
 
   function init(hostEl, opts) {
@@ -188,7 +225,7 @@
       scene.add(sun);
       scene.add(sun.target);
 
-      lanternLight = new THREE.PointLight(0xffc173, 1.0, 9, 2);
+      lanternLight = new THREE.PointLight(0xffc173, 1.0, 11, 2);
       lanternLight.position.set(0, 1.6, 0);
       scene.add(lanternLight);
 
@@ -516,7 +553,7 @@
     const model = window.LizaTownModel.buildTownModel(data);
     const P = window.LizaTownModel.PALETTE;
 
-    windows = []; flags = []; smokes = []; facGroups = {}; waterMeshes = [];
+    windows = []; flags = []; smokes = []; facGroups = {}; waterMeshes = []; glows = [];
     townGroup = new THREE.Group();
 
     const S = model.board.size;
@@ -614,6 +651,7 @@
     windows.push({ mat: headMat, delay: 0, always: true });
     lant.position.y = 0.1;
     townGroup.add(lant);
+    addGlow(townGroup, 0, 1.72, 0, 3.0, 0xffc878, 1.0); // はじまりのランタンの大きな灯
 
     /* 施設 */
     for (const b of model.buildings) {
@@ -623,6 +661,9 @@
       grp.traverse(o => { o.userData.facId = b.id; });
       facGroups[b.id] = grp;
       townGroup.add(grp);
+      // 建物の窓明かりのにじみ（夜に点る暖色のハロー。段階が上がる＝建物が増え灯も増える）
+      addGlow(townGroup, b.x, 0.9, b.z, 1.8 + b.tier * 0.2,
+        b.id === 'school' ? 0xbcd2ff : 0xffd98e, 0.7);
     }
 
     /* 街灯（細いポールは影を落とさない） */
@@ -646,14 +687,16 @@
       grp.userData.facId = 'lights';
       grp.traverse(o => { o.userData.facId = 'lights'; });
       townGroup.add(grp);
+      addGlow(townGroup, l.x, 1.25, l.z, 1.3, 0xffd98e, 0.75); // 街灯の灯のにじみ
     }
 
-    /* 民家 */
+    /* 民家（窓明かりのにじみで夜の「光の海」を作る） */
     for (const h of model.homes) {
       const grp = buildParts(h.parts);
       grp.position.set(h.x, 0.1, h.z);
       grp.rotation.y = (h.rotY % (Math.PI / 2)) - Math.PI / 4;
       townGroup.add(grp);
+      addGlow(townGroup, h.x, 0.5, h.z, 0.9, 0xffd98e, 0.5);
     }
 
     /* 依頼報酬の装飾 */
@@ -700,8 +743,8 @@
     // t(秒), 霞色, 太陽色, 太陽強さ, 仰角(deg), 半球光(空/地/強さ)
     { t: 0,   sky: 0xdfe9f6, sunC: 0xffe6c2, sunI: 0.42, elev: 22, hemiS: 0xf0f5fb, hemiG: 0xe8d8ba, hemiI: 0.85 },
     { t: 85,  sky: 0xd5e7f8, sunC: 0xfff4e2, sunI: 0.45, elev: 60, hemiS: 0xf6fafd, hemiG: 0xecdcc0, hemiI: 0.88 },
-    { t: 145, sky: 0xf6cfa6, sunC: 0xffb878, sunI: 0.45, elev: 16, hemiS: 0xf8dcb8, hemiG: 0xe2c49e, hemiI: 0.82 },
-    { t: 205, sky: 0x4a5a94, sunC: 0xb4c4ee, sunI: 0.24, elev: 45, hemiS: 0x8290c4, hemiG: 0x5e5468, hemiI: 0.7 },
+    { t: 145, sky: 0xf6cfa6, sunC: 0xffb878, sunI: 0.40, elev: 16, hemiS: 0xf2c59c, hemiG: 0xcaa886, hemiI: 0.66 },
+    { t: 205, sky: 0x18213f, sunC: 0x93a6dc, sunI: 0.10, elev: 45, hemiS: 0x2e3f70, hemiG: 0x20203a, hemiI: 0.30 },
     { t: 240, sky: 0xdfe9f6, sunC: 0xffe6c2, sunI: 0.42, elev: 22, hemiS: 0xf0f5fb, hemiG: 0xe8d8ba, hemiI: 0.85 },
   ];
   T.KEYS = KEYS;
@@ -770,24 +813,46 @@
     if (sun.castShadow === night) sun.castShadow = !night;
   }
 
+  /* 時間帯ごとの光のスカラ値（純粋計算・テスト可能）。
+     夜は hemiI/sunI が落ち、lit（窓・灯りの点灯係数）が立つ。 */
+  function sampleCycle(pos) {
+    const k = keyLerp(pos);
+    const lp = (x, y) => x + (y - x) * k.f;
+    const lit = litFactor(pos, 0); // 夜=1 / 昼=0
+    return {
+      a: k.a, b: k.b, f: k.f,
+      hemiI: lp(k.a.hemiI, k.b.hemiI),
+      sunI: lp(k.a.sunI, k.b.sunI),
+      elev: lp(k.a.elev, k.b.elev),
+      lit,
+      lanternI: 0.4 + lit * 1.7, // 夜にランタン光が強くなる
+    };
+  }
+  T.sampleCycle = sampleCycle;
+  T.litFactor = litFactor;
+
   function applyCycle(nowMs) {
     const pos = (cyclePos / cycleLen) * 240;
-    const k = keyLerp(pos);
+    const s = sampleCycle(pos);
 
-    scene.fog.color.copy(lerpColor(k.a.sky, k.b.sky, k.f));
-    sun.color.copy(lerpColor(k.a.sunC, k.b.sunC, k.f));
-    sun.intensity = k.a.sunI + (k.b.sunI - k.a.sunI) * k.f;
-    hemi.color.copy(lerpColor(k.a.hemiS, k.b.hemiS, k.f));
-    hemi.groundColor.copy(lerpColor(k.a.hemiG, k.b.hemiG, k.f));
-    hemi.intensity = k.a.hemiI + (k.b.hemiI - k.a.hemiI) * k.f;
+    scene.fog.color.copy(lerpColor(s.a.sky, s.b.sky, s.f));
+    sun.color.copy(lerpColor(s.a.sunC, s.b.sunC, s.f));
+    sun.intensity = s.sunI;
+    hemi.color.copy(lerpColor(s.a.hemiS, s.b.hemiS, s.f));
+    hemi.groundColor.copy(lerpColor(s.a.hemiG, s.b.hemiG, s.f));
+    hemi.intensity = s.hemiI;
 
     updateSunAngle(pos, nowMs);
 
-    const night = litFactor(pos, 0);
-    lanternLight.intensity = 0.35 + night * 0.95;
+    lanternLight.intensity = s.lanternI;
 
+    // 窓・ランタン・街灯の発光（夕暮れは delay で一つずつ点く）
     for (const w of windows) {
       w.mat.emissiveIntensity = w.always ? 1 : litFactor(pos, w.delay);
+    }
+    // 灯りのにじみ（加算グロー）— 夜に点り、にじむ。昼は消える
+    for (const g of glows) {
+      g.sprite.material.opacity = s.lit * g.base;
     }
   }
 
