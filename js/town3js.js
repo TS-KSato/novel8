@@ -62,15 +62,20 @@
   };
 
   /* 地形（画面いっぱいに広がる大地。台座は撤廃）。
-     カメラの「右/奥」方向に沿った大きな板で画面を覆い、奥端を地平線にする。 */
+     カメラの「右/奥」方向に沿った大きな板で画面を覆い、奥端を地平線にする。
+     起伏・色ゆらぎ・自然物はすべて seed 固定で決定的に生成する。 */
   const TERRAIN = {
     width: 96,        // 画面横を覆う幅（カメラ右方向、±48）
     front: 50,        // カメラ手前への広がり（画面外へフレームアウト）
     horizon: 14,      // 奥（地平線）までの距離。ここで地面が切れ、上は空（約17%）になる
-    seed: 20240607,   // 自然配置の固定シード（再描画・セーブ復元で同一）
+    seed: 20240607,   // 自然配置・起伏の固定シード（再描画・セーブ復元で同一）
     ringMin: 8.5,     // 自然要素を撒くドーナツ内径（街を避ける）
     ringMax: 22,      // 〃 外径（視界内を埋める）
-    trees: 26, hills: 15, water: 2,
+    flatR: 7.6,       // 中心の街エリアを平坦に保つ半径（建物が傾かない）
+    flatBlend: 3.2,   // 平坦→起伏へのなめらかな移行幅
+    amp: 0.55,        // 起伏の最大高さ（控えめ）
+    segU: 48, segV: 40, // 地面メッシュの分割数（質感と性能のバランス）
+    water: 2,         // 水辺の数
   };
 
   const T = {
@@ -79,6 +84,7 @@
     init, render, setCycle, animateFacility, lanternPoint, spawnWish,
     quantizeSunPos, // テスト用：影の角度更新の離散化ロジック
     fitFrustum,     // テスト用：最悪構成を内包するフレーミング計算
+    terrainFeatures, groundHeightAt, // テスト用：地形の決定性・街エリアの平坦
     loadCharacter,  // テスト用：失敗時に安全にfalseを返すこと
     charBounce,
   };
@@ -99,6 +105,7 @@
   let charRoot = null;       // レイン本体（読み込めた場合のみ）
   let charBounceT0 = 0;      // ジャンプ反応の開始時刻
   let lastCharTap = 0;       // タップ反応のレート制限
+  let waterMeshes = [];      // 水面（ゆらぎアニメ用）
 
   /* 共有ジオメトリ */
   let GEO = null;
@@ -335,67 +342,194 @@
     };
   }
 
-  /* 画面いっぱいの大地（カメラの右/奥方向に沿った大きな板）。
-     奥端 = gBack*horizon が地平線になり、その上は空（透過→CSS）。 */
-  function buildGround(P) {
+  /* ---------- 決定的な地形ノイズ・起伏（THREE非依存・テスト可能） ---------- */
+  function hash2(xi, zi) {
+    let n = (Math.imul(xi, 374761393) + Math.imul(zi, 668265263) + Math.imul(TERRAIN.seed, 2654435761)) | 0;
+    n = Math.imul(n ^ (n >>> 13), 1274126177);
+    return ((n ^ (n >>> 16)) >>> 0) / 4294967296; // 0..1
+  }
+  function vnoise(x, z) {
+    const xi = Math.floor(x), zi = Math.floor(z), xf = x - xi, zf = z - zi;
+    const u = xf * xf * (3 - 2 * xf), w = zf * zf * (3 - 2 * zf);
+    const a = hash2(xi, zi), b = hash2(xi + 1, zi), c = hash2(xi, zi + 1), d = hash2(xi + 1, zi + 1);
+    return (a * (1 - u) + b * u) * (1 - w) + (c * (1 - u) + d * u) * w;
+  }
+  function smoothstep(e0, e1, x) {
+    const t = Math.max(0, Math.min(1, (x - e0) / (e1 - e0)));
+    return t * t * (3 - 2 * t);
+  }
+
+  /* 地面の高さ。中心の街エリア（dist<flatR）は必ず 0（平坦）。
+     外側へなめらかに起伏を出し、水辺はくぼませる。 */
+  function groundHeightAt(x, z, water) {
+    const dist = Math.hypot(x, z);
+    const flat = smoothstep(TERRAIN.flatR, TERRAIN.flatR + TERRAIN.flatBlend, dist); // 街0→外1
+    if (flat <= 0) return 0;
+    let h = (vnoise(x * 0.12, z * 0.12) - 0.5) * 2;
+    h += (vnoise(x * 0.32 + 5, z * 0.32 + 5) - 0.5) * 0.5; // 2オクターブ
+    h *= TERRAIN.amp * flat;
+    if (water) for (const wt of water) {
+      const d = Math.hypot(x - wt.x, z - wt.z);
+      if (d < wt.r + 1.4) h -= smoothstep(wt.r + 1.4, wt.r * 0.4, d) * (TERRAIN.amp + 0.55);
+    }
+    return h;
+  }
+
+  /* 自然物の決定的配置（疎密のある木立・低木・岩・草むら・水辺）。
+     位置データのみ。THREE非依存でテスト可能。 */
+  function terrainFeatures() {
+    const rng = mulberry32(TERRAIN.seed ^ 0x9e3779b1);
+    const ang = () => rng() * Math.PI * 2;
+    const water = [];
+    for (let i = 0; i < TERRAIN.water; i++) {
+      // 視界の手前側（+x+z 寄り）に置き、岸辺つきの水辺が見えるようにする
+      const a = -0.2 + i * 1.0 + rng() * 0.5, rad = 10 + rng() * 6;
+      water.push({ x: Math.cos(a) * rad, z: Math.sin(a) * rad, r: 2.4 + rng() * 1.4 });
+    }
+    const trees = [];
+    for (let c = 0; c < 5; c++) { // 木立（クラスタ）＝疎密を作る
+      const ca = ang(), cr = TERRAIN.ringMin + 1 + rng() * (TERRAIN.ringMax - TERRAIN.ringMin - 2);
+      const cx = Math.cos(ca) * cr, cz = Math.sin(ca) * cr, cnt = 3 + Math.floor(rng() * 5);
+      for (let k = 0; k < cnt; k++) {
+        const a = ang(), d = rng() * 2.6;
+        const x = cx + Math.cos(a) * d, z = cz + Math.sin(a) * d, rr = Math.hypot(x, z);
+        if (rr < TERRAIN.ringMin || rr > TERRAIN.ringMax + 2) continue;
+        trees.push({ x, z, scale: 0.55 + rng() * 1.15, leaf: rng() < 0.5 });
+      }
+    }
+    for (let i = 0; i < 6; i++) { // ぽつんと立つ単木
+      const a = ang(), r = TERRAIN.ringMin + rng() * (TERRAIN.ringMax - TERRAIN.ringMin);
+      trees.push({ x: Math.cos(a) * r, z: Math.sin(a) * r, scale: 0.7 + rng() * 1.0, leaf: rng() < 0.5 });
+    }
+    const bushes = [], rocks = [], grass = [];
+    for (let i = 0; i < 14; i++) {
+      const a = ang(), r = TERRAIN.ringMin + rng() * (TERRAIN.ringMax - TERRAIN.ringMin);
+      bushes.push({ x: Math.cos(a) * r, z: Math.sin(a) * r, s: 0.5 + rng() * 0.7, leaf: rng() < 0.5 });
+    }
+    for (let i = 0; i < 8; i++) {
+      const a = ang(), r = TERRAIN.ringMin + rng() * (TERRAIN.ringMax - TERRAIN.ringMin);
+      rocks.push({ x: Math.cos(a) * r, z: Math.sin(a) * r, s: 0.3 + rng() * 0.5, rot: rng() * Math.PI });
+    }
+    for (let i = 0; i < 20; i++) {
+      const a = ang(), r = TERRAIN.ringMin - 1 + rng() * (TERRAIN.ringMax - TERRAIN.ringMin + 1);
+      grass.push({ x: Math.cos(a) * r, z: Math.sin(a) * r, s: 0.4 + rng() * 0.5 });
+    }
+    return { water, trees, bushes, rocks, grass };
+  }
+
+  /* 画面いっぱいの大地。世界座標で頂点を直接置く一枚メッシュ（1ドローコール）。
+     起伏は groundHeightAt、色は位置ノイズ＋段階で頂点カラーに。 */
+  function buildGround(P, stage, water) {
     const e = CAM.elevDeg * Math.PI / 180, a = CAM.azimDeg * Math.PI / 180;
     const dir = new THREE.Vector3(-Math.cos(e)*Math.sin(a), -Math.sin(e), -Math.cos(e)*Math.cos(a)).normalize();
-    const gRight = new THREE.Vector3(-dir.z, 0, dir.x).normalize();  // 画面右（水平）
-    const gBack = new THREE.Vector3(dir.x, 0, dir.z).normalize();    // 画面奥＝カメラから遠ざかる側（地平線）
-    const zAxis = new THREE.Vector3().crossVectors(gRight, new THREE.Vector3(0, 1, 0)); // 右手系の第3軸(=-gBack)
-    const depth = TERRAIN.front + TERRAIN.horizon;
-    const ground = new THREE.Mesh(geos().box, matOf(P.grass));
-    ground.quaternion.setFromRotationMatrix(
-      new THREE.Matrix4().makeBasis(gRight, new THREE.Vector3(0, 1, 0), zAxis));
-    ground.scale.set(TERRAIN.width, 0.1, depth);
-    ground.position.copy(gBack.clone().multiplyScalar((TERRAIN.horizon - TERRAIN.front) / 2));
-    ground.position.y = -0.05; // 上面を y=0 に
+    const gRight = new THREE.Vector3(-dir.z, 0, dir.x).normalize();
+    const gBack = new THREE.Vector3(dir.x, 0, dir.z).normalize();
+    const W = TERRAIN.width, D = TERRAIN.front + TERRAIN.horizon;
+    const cBack = (TERRAIN.horizon - TERRAIN.front) / 2; // 板の中心（gBack方向）
+    const su = TERRAIN.segU, sv = TERRAIN.segV;
+    const lush = Math.min(1, (stage - 1) / 3); // 段階で緑が濃く豊かに
+
+    const cDark = new THREE.Color(P.grassDark), cMid = new THREE.Color(P.grass);
+    const cLight = new THREE.Color(P.grassLight), cDirt = new THREE.Color(P.dirt);
+    const tmp = new THREE.Color();
+    const positions = [], colors = [];
+    const worldOf = (u, v) => [
+      gRight.x * u + gBack.x * (v + cBack),
+      gRight.z * u + gBack.z * (v + cBack),
+    ];
+    for (let j = 0; j <= sv; j++) {
+      for (let i = 0; i <= su; i++) {
+        const u = (i / su - 0.5) * W, v = (j / sv - 0.5) * D;
+        const [wx, wz] = worldOf(u, v);
+        const y = groundHeightAt(wx, wz, water);
+        positions.push(wx, y, wz);
+        // 色：濃淡の草＋土＋段階の豊かさ
+        const n = vnoise(wx * 0.2 + 20, wz * 0.2 + 20);
+        const dn = vnoise(wx * 0.55 + 40, wz * 0.55 + 40);
+        tmp.copy(cDark).lerp(cLight, n * (0.55 + lush * 0.4));
+        const dirtAmt = Math.max(0, dn - (0.74 - lush * 0.12)) * 2.2;
+        if (dirtAmt > 0) tmp.lerp(cDirt, Math.min(0.85, dirtAmt));
+        tmp.lerp(cMid, lush * 0.18);              // 段階が進むほど中庸の緑へ寄せ豊かに
+        const sh = 1 + Math.max(-0.18, Math.min(0.14, y * 0.28)); // 谷は暗く尾根は明るく
+        colors.push(tmp.r * sh, tmp.g * sh, tmp.b * sh);
+      }
+    }
+    const idx = [];
+    const row = su + 1;
+    for (let j = 0; j < sv; j++) for (let i = 0; i < su; i++) {
+      const p = j * row + i;
+      idx.push(p, p + row, p + 1, p + 1, p + row, p + row + 1);
+    }
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+    geo.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+    geo.setIndex(idx);
+    geo.computeVertexNormals();
+    const ground = new THREE.Mesh(geo, new THREE.MeshLambertMaterial({ vertexColors: true }));
     ground.receiveShadow = true;
     ground.castShadow = false;
     return { ground, gRight, gBack };
   }
 
-  /* 街の外側を自然で埋める（木立・低い丘・水辺）。固定シードで決定的。
-     地平線より奥には置かない。 */
-  function addNature(group, gBack, P) {
-    const rng = mulberry32(TERRAIN.seed);
+  /* 自然物を配置。地形の高さに沿わせ、水辺はくぼみに岸辺付きで馴染ませる。
+     地平線より奥はカリング。 */
+  function addNature(group, gBack, P, feats, waterMeshes) {
     const limit = TERRAIN.horizon - 1.5;
-    const backCoord = (x, z) => x * gBack.x + z * gBack.z;
-    for (let i = 0; i < TERRAIN.trees; i++) {
-      const ang = rng() * Math.PI * 2, rad = TERRAIN.ringMin + rng() * (TERRAIN.ringMax - TERRAIN.ringMin);
-      const x = Math.cos(ang) * rad, z = Math.sin(ang) * rad;
-      if (backCoord(x, z) > limit) continue;
+    const visible = (x, z) => (x * gBack.x + z * gBack.z) <= limit;
+    const yAt = (x, z) => groundHeightAt(x, z, feats.water);
+    const stoneMat = new THREE.MeshLambertMaterial({ color: 0xb7b0a2 });
+
+    for (const t of feats.trees) {
+      if (!visible(t.x, t.z)) continue;
       const g = new THREE.Group();
-      const th = 0.5 + rng() * 0.5;
+      const th = 0.55;
       const trunk = new THREE.Mesh(geos().cyl, matOf(P.trunk));
       trunk.scale.set(0.12, th, 0.12); trunk.position.y = th / 2; trunk.castShadow = false;
-      const lr = 0.5 + rng() * 0.4;
-      const leaf = new THREE.Mesh(geos().sphere, matOf(rng() < 0.5 ? P.leaf : P.leafDark));
-      leaf.scale.set(lr * 2, lr * 2.2, lr * 2); leaf.position.y = th + lr * 0.8; leaf.castShadow = false;
-      g.add(trunk); g.add(leaf);
-      g.position.set(x, 0, z); g.scale.setScalar(0.8 + rng() * 0.7);
+      const leaf = new THREE.Mesh(geos().sphere, matOf(t.leaf ? P.leaf : P.leafDark));
+      leaf.scale.set(1.0, 1.15, 1.0); leaf.position.y = th + 0.45; leaf.castShadow = false;
+      const leaf2 = new THREE.Mesh(geos().sphere, matOf(t.leaf ? P.leafDark : P.leaf));
+      leaf2.scale.set(0.7, 0.7, 0.7); leaf2.position.set(0.25, th + 0.7, 0.1); leaf2.castShadow = false;
+      g.add(trunk); g.add(leaf); g.add(leaf2);
+      g.position.set(t.x, yAt(t.x, t.z), t.z); g.scale.setScalar(t.scale);
       group.add(g);
     }
-    for (let i = 0; i < TERRAIN.hills; i++) {
-      const ang = rng() * Math.PI * 2, rad = TERRAIN.ringMin + 2 + rng() * (TERRAIN.ringMax - TERRAIN.ringMin);
-      const x = Math.cos(ang) * rad, z = Math.sin(ang) * rad;
-      if (backCoord(x, z) > limit) continue;
-      const hill = new THREE.Mesh(geos().sphere, matOf(i % 2 ? P.grass : P.grassDark));
-      const r = 1.2 + rng() * 2.2;
-      hill.scale.set(r * 2, 0.4 + rng() * 0.5, r * 2);
-      hill.position.set(x, 0.02, z); hill.receiveShadow = true; hill.castShadow = false;
-      group.add(hill);
+    for (const b of feats.bushes) {
+      if (!visible(b.x, b.z)) continue;
+      const bush = new THREE.Mesh(geos().sphere, matOf(b.leaf ? P.leaf : P.grassDark));
+      bush.scale.set(b.s * 1.6, b.s * 0.9, b.s * 1.6);
+      bush.position.set(b.x, yAt(b.x, b.z) + b.s * 0.25, b.z); bush.castShadow = false;
+      group.add(bush);
     }
-    for (let i = 0; i < TERRAIN.water; i++) {
-      const ang = (i ? 2.3 : 0.7) + rng() * 0.5, rad = 12 + rng() * 9;
-      const x = Math.cos(ang) * rad, z = Math.sin(ang) * rad;
-      if (backCoord(x, z) > limit) continue;
-      const water = new THREE.Mesh(geos().disc, new THREE.MeshLambertMaterial({
-        color: P.water, emissive: 0x2a4a66, emissiveIntensity: 0.2,
+    for (const r of feats.rocks) {
+      if (!visible(r.x, r.z)) continue;
+      const rock = new THREE.Mesh(geos().sphere, stoneMat);
+      rock.scale.set(r.s * 1.5, r.s * 0.95, r.s * 1.2);
+      rock.rotation.y = r.rot;
+      rock.position.set(r.x, yAt(r.x, r.z) + r.s * 0.3, r.z); rock.castShadow = false;
+      group.add(rock);
+    }
+    for (const gr of feats.grass) {
+      if (!visible(gr.x, gr.z)) continue;
+      const tuft = new THREE.Mesh(geos().cone, matOf(P.leaf));
+      tuft.scale.set(gr.s * 0.5, gr.s * 0.7, gr.s * 0.5);
+      tuft.position.set(gr.x, yAt(gr.x, gr.z) + gr.s * 0.32, gr.z); tuft.castShadow = false;
+      group.add(tuft);
+    }
+    // 水辺：くぼみ（buildGroundで掘済み）に、岸辺→水面の順で馴染ませる
+    for (const wt of feats.water) {
+      if (!visible(wt.x, wt.z)) continue;
+      const shore = new THREE.Mesh(geos().disc, matOf(P.dirt));
+      shore.scale.set((wt.r + 0.7) * 2, 1, (wt.r + 0.7) * 2);
+      shore.position.set(wt.x, -0.16, wt.z); shore.receiveShadow = true; shore.castShadow = false;
+      group.add(shore);
+      const surf = new THREE.Mesh(geos().disc, new THREE.MeshLambertMaterial({
+        color: P.water, emissive: 0x3a6f96, emissiveIntensity: 0.35,
+        transparent: true, opacity: 0.82,
       }));
-      const r = 2 + rng() * 2;
-      water.scale.set(r * 2, 1, r * 1.4); water.position.set(x, 0.04, z); water.castShadow = false;
-      group.add(water);
+      surf.scale.set(wt.r * 2, 1, wt.r * 1.7);
+      surf.position.set(wt.x, -0.12, wt.z); surf.castShadow = false;
+      group.add(surf);
+      if (waterMeshes) waterMeshes.push({ mesh: surf, seed: wt.x + wt.z });
     }
   }
 
@@ -410,13 +544,13 @@
 
     const S = model.board.size;
 
-    /* 画面いっぱいに広がる大地（台座は撤廃）。カメラの右/奥方向に沿った
-       大きな板で画面を覆い、手前・左右は画面外へ逃がし、奥端を地平線にする。 */
-    const gb = buildGround(P);
+    /* 画面いっぱいに広がる大地（台座は撤廃・ゆるく波打つ起伏＋色ゆらぎ）。
+       自然物・水辺は固定シードで決定的に生成する。 */
+    const feats = terrainFeatures();
+    const gb = buildGround(P, model.stage, feats.water);
     townGroup.add(gb.ground);
-
-    /* 街の外側を自然（木立・低い丘・水辺）で画面端まで埋める（固定シード） */
-    addNature(townGroup, gb.gBack, P);
+    waterMeshes = [];
+    addNature(townGroup, gb.gBack, P, feats, waterMeshes);
 
     /* 街エリアの土の区画・草の丘（中心の彩り。配置は街エリア内に限定） */
     const rngP = (s => () => (s = (s * 16807) % 2147483647) / 2147483647)(model.stage * 99 + 7);
@@ -906,6 +1040,9 @@
     for (const f of flags) {
       f.mesh.rotation.y = Math.sin(t * 4 + f.seed) * 0.3;
       f.mesh.scale.y = 1 + Math.sin(t * 7 + f.seed) * 0.06;
+    }
+    for (const w of waterMeshes) { // 水面のゆらぎ（控えめ）
+      w.mesh.material.emissiveIntensity = 0.3 + Math.sin(t * 1.3 + w.seed) * 0.12;
     }
     for (const s of smokes) {
       const ph = ((t * 0.35 + s.seed) % 1.6) / 1.6;

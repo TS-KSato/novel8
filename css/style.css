@@ -391,17 +391,20 @@ rt { font-size: 0.55em; opacity: 0.8; letter-spacing: 0; }
 
 #tap-hint {
   position: absolute;
-  bottom: 12px; left: 50%;
+  bottom: 7px; left: 50%;        /* 地形ビューの下端に寄せる */
   transform: translateX(-50%);
   font-size: 11px;
-  color: rgba(255, 213, 138, 0.75);
-  background: rgba(8, 10, 26, 0.45);
-  padding: 4px 12px;
+  color: #fff4dc;
+  background: rgba(28, 20, 12, 0.30); /* 黒帯をやめ、風景に馴染む薄い半透明 */
+  backdrop-filter: blur(3px);
+  -webkit-backdrop-filter: blur(3px);
+  padding: 3px 12px;
   border-radius: 999px;
   pointer-events: none;
   animation: hintPulse 2.4s ease-in-out infinite;
   white-space: nowrap;
   transition: opacity 0.9s ease;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5); /* 明るい地形でも読める */
 }
 @keyframes hintPulse { 0%, 100% { opacity: 0.85; } 50% { opacity: 0.35; } }
 #tap-hint.hidden { opacity: 0; animation: none; }
