@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no">
 <meta name="theme-color" content="#1a1726">
-<title>灯火の街リーザ（仮）— 問1</title>
+<title>灯火の街リーザ（仮）— カードパズル</title>
 <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
@@ -30,7 +30,12 @@
   <section id="problem">
     <div id="problem-tag">悩み</div>
     <p id="problem-text"></p>
+    <!-- 観察メモ（無料・常時表示） -->
+    <p id="observe"><span id="observe-label">レインの覚え書き</span><span id="observe-text"></span></p>
   </section>
+
+  <!-- 仲間の声（相談ヒント。出た分だけ積み上がる） -->
+  <section id="hints" aria-live="polite"></section>
 
   <!-- 選択中（レシピ） -->
   <section id="recipe" aria-live="polite">
@@ -43,6 +48,13 @@
     <h2 id="hand-head">手札 — 組み合わせて解く</h2>
     <ul id="hand"></ul>
   </main>
+
+  <!-- 相談・撤退（いずれも信頼を消費。足りなければ無効） -->
+  <section id="assist">
+    <button type="button" id="btn-hint">仲間に相談する</button>
+    <button type="button" id="btn-decline">相談を断る</button>
+  </section>
+  <p id="assist-note" hidden></p>
 
   <!-- 操作バー -->
   <nav id="actionbar">
