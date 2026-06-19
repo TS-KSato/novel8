@@ -83,6 +83,17 @@ button { font-family: inherit; cursor: pointer; border: none; color: inherit; }
 #trust-val { font-size: 15px; font-weight: bold; color: var(--amber); min-width: 14px; text-align: right; }
 #trust.low #trust-val { color: var(--danger); }
 
+/* ---------- 仲間加入などの地の文 ---------- */
+#lead {
+  margin: -2px 6px -4px;
+  font-size: 12.5px;
+  line-height: 1.7;
+  color: var(--amber);
+  opacity: 0.85;
+  letter-spacing: 0.5px;
+}
+#lead[hidden] { display: none; }
+
 /* ---------- 悩み ---------- */
 #problem {
   position: relative;
