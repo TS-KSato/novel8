@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no">
+<meta name="theme-color" content="#1a1726">
+<title>灯火の街リーザ（仮）— 問1</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div id="app">
+
+  <!-- ヘッダ：レインと信頼ゲージ -->
+  <header id="topbar">
+    <div id="who">
+      <span id="face" aria-hidden="true"></span>
+      <span id="who-name">レイン</span>
+    </div>
+    <div id="trust" aria-label="信頼">
+      <span id="trust-label">信頼</span>
+      <span id="trust-pips" aria-hidden="true"></span>
+      <span id="trust-val">0</span>
+    </div>
+  </header>
+
+  <!-- 悩み -->
+  <section id="problem">
+    <div id="problem-tag">悩み</div>
+    <p id="problem-text"></p>
+  </section>
+
+  <!-- 選択中（レシピ） -->
+  <section id="recipe" aria-live="polite">
+    <span id="recipe-hint">カードを選んでね</span>
+    <div id="recipe-chips"></div>
+  </section>
+
+  <!-- 手札 -->
+  <main id="hand-area">
+    <h2 id="hand-head">手札 — 組み合わせて解く</h2>
+    <ul id="hand"></ul>
+  </main>
+
+  <!-- 操作バー -->
+  <nav id="actionbar">
+    <button type="button" id="btn-clear" disabled>選び直す</button>
+    <button type="button" id="btn-solve" disabled>これで解く</button>
+  </nav>
+
+</div>
+
+<!-- 結果オーバーレイ -->
+<div id="result" hidden>
+  <div id="result-card" role="dialog" aria-modal="true">
+    <div id="result-mark"></div>
+    <h3 id="result-title"></h3>
+    <p id="result-text"></p>
+    <div id="result-trust"></div>
+    <button type="button" id="result-next"></button>
+  </div>
+</div>
+
+<script src="js/data.js"></script>
+<script src="js/main.js"></script>
+</body>
+</html>
