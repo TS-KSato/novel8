@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no">
+<meta name="theme-color" content="#1a1726">
+<title>灯火の街リーザ（仮）— 問1 実験スライス</title>
+<link rel="stylesheet" href="css/experiment.css">
+</head>
+<body>
+<div id="exp-app">
+
+  <!-- 悩み -->
+  <section id="exp-problem">
+    <div id="exp-problem-tag">悩み</div>
+    <p id="exp-problem-text">拠点の水は澄んでいるのに、飲むと決まって腹を下す。……なぜだ?</p>
+    <p id="exp-observe">
+      <span id="exp-observe-label">レインの覚え書き</span>
+      <span>煮炊きに使った後の水で腹を下した者は、一人もいない</span>
+    </p>
+  </section>
+
+  <!-- 実験ビュー（Three.js の舞台） -->
+  <section id="exp-view">
+    <canvas id="exp-canvas"></canvas>
+    <p id="exp-view-hint">手札を選んで「試す」——何が起きる?</p>
+  </section>
+
+  <!-- レインの一言（現象の「後」に出る） -->
+  <div id="exp-line" hidden>
+    <span id="exp-line-who">レイン</span>
+    <p id="exp-line-text"></p>
+    <p id="exp-line-sub" hidden></p>
+  </div>
+
+  <!-- 手札 -->
+  <ul id="exp-hand"></ul>
+
+  <!-- 操作 -->
+  <nav id="exp-actions">
+    <button type="button" id="exp-reset" disabled>選び直す</button>
+    <button type="button" id="exp-try" disabled>試す</button>
+  </nav>
+
+</div>
+
+<script src="vendor/three.min.js"></script>
+<script src="js/experiment.js"></script>
+</body>
+</html>
