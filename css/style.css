@@ -112,6 +112,77 @@ button { font-family: inherit; cursor: pointer; border: none; color: inherit; }
 }
 #problem-text { font-size: 16px; line-height: 1.85; margin-top: 4px; }
 
+/* 観察メモ（無料・常時表示） */
+#observe {
+  margin-top: 12px;
+  padding: 9px 12px 9px 12px;
+  border-left: 3px solid var(--amber-deep);
+  background: rgba(255, 196, 107, 0.07);
+  border-radius: 0 10px 10px 0;
+  font-size: 13px;
+  line-height: 1.75;
+  color: var(--ink);
+}
+#observe-label {
+  display: block;
+  font-size: 10.5px;
+  font-weight: bold;
+  letter-spacing: 1px;
+  color: var(--amber);
+  margin-bottom: 2px;
+}
+
+/* ---------- 仲間の声（相談ヒント） ---------- */
+#hints { display: flex; flex-direction: column; gap: 8px; }
+#hints:empty { display: none; }
+.hint {
+  background: var(--bg-2);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 9px 13px;
+  font-size: 13.5px;
+  line-height: 1.7;
+  animation: up 0.28s cubic-bezier(0.2, 1, 0.4, 1);
+}
+.hint-who {
+  display: block;
+  font-size: 11px;
+  font-weight: bold;
+  letter-spacing: 1px;
+  color: var(--amber);
+  margin-bottom: 2px;
+}
+.hint.deep { border-color: var(--on-edge); background: rgba(255, 196, 107, 0.1); }
+
+/* ---------- 相談・撤退 ---------- */
+#assist {
+  display: grid;
+  grid-template-columns: 1.7fr 1fr;
+  gap: 10px;
+}
+#assist button {
+  min-height: 48px;
+  border-radius: 14px;
+  font-size: 14px;
+  font-weight: bold;
+  letter-spacing: 0.5px;
+  background: var(--bg-2);
+  border: 1.5px solid var(--line);
+  color: var(--ink);
+  transition: transform 0.12s cubic-bezier(0.34, 1.7, 0.5, 1), opacity 0.2s;
+}
+#btn-hint { color: var(--amber); border-color: rgba(255, 196, 107, 0.4); }
+#btn-decline { color: var(--ink-dim); }
+#assist button:active:not(:disabled) { transform: scale(0.96); }
+#assist button:disabled { opacity: 0.38; cursor: default; }
+#assist-note {
+  margin: 6px 4px -4px;
+  font-size: 12px;
+  color: var(--danger);
+  text-align: center;
+}
+#assist-note[hidden] { display: none; }
+
 /* ---------- 選択中（レシピ） ---------- */
 #recipe {
   min-height: 40px;
